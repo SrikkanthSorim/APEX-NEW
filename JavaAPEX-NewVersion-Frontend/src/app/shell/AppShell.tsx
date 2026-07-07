@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import apexLogo from "../../assets/logo.jpg";
 import { API_BASE_URL } from "@/services/config/env";
+import "./AppShell.css";
 
 const shellStyles: { [key: string]: React.CSSProperties } = {
   root: {

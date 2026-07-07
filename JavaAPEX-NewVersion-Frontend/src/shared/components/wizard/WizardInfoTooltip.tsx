@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
+import "./WizardInfoTooltip.css";
 
 interface WizardInfoTooltipProps {
   label: string;

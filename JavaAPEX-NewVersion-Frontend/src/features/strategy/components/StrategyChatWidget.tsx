@@ -1,6 +1,7 @@
 import React, { useEffect, useId, useRef, useState } from "react";
 import type { StrategyPageContext } from "@/features/strategy/services/strategyService";
 import { API_BASE_URL } from "@/services/config/env";
+import "./StrategyChatWidget.css";
 
 type Role = "user" | "assistant" | "system";
 

@@ -7,7 +7,6 @@ import {
   FaProjectDiagram,
   FaRocket,
   FaSearch,
-  FaTimes,
 } from "react-icons/fa";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
@@ -58,13 +57,12 @@ import {
 } from "@/features/modernization/services/modernizationService";
 import {
   clearWizardStorage,
-  getStepFromPath,
   readSessionJson,
   type PersistedWizardFormState,
-  STEP_ROUTES,
   WIZARD_FORM_STATE_KEY,
-} from "../../../utils/migrationWizardStorage";
-import { useMigrationWizardPersistence } from "../../../hooks/useMigrationWizardPersistence";
+} from "@/shared/utils/migrationWizardStorage";
+import { getStepFromPath, STEP_ROUTES } from "@/config/stepRoutes";
+import { useMigrationWizardPersistence } from "@/shared/hooks/useMigrationWizardPersistence";
 import { isPrivateRepoAccessError } from "@/shared/utils/repoAccessError";
 import { buildWizardAccentVars } from "@/shared/components/wizard";
 import { useRepositoryConnect } from "@/features/connect/hooks/useRepositoryConnect";
@@ -72,20 +70,6 @@ import { useDiscoveryState } from "@/features/discovery/hooks/useDiscoveryState"
 import { useStrategyState, type MigrationApproachValue } from "@/features/strategy/hooks/useStrategyState";
 import { useModernizationState } from "@/features/modernization/hooks/useModernizationState";
 import { useMigrationExecution } from "@/features/result/hooks/useMigrationExecution";
-import { DiscoveryStepView } from "@/features/discovery/components/DiscoveryStepView";
-import StrategyChatWidget from "@/features/strategy/components/StrategyChatWidget";
-import { StrategyStepView } from "@/features/strategy/components/StrategyStepView";
-import ConnectPage from "@/features/connect/pages/ConnectPage";
-import { ConnectStepView } from "@/features/connect/components/ConnectStepView";
-import DiscoveryPage from "@/features/discovery/pages/DiscoveryPage";
-import StrategyPage from "@/features/strategy/pages/StrategyPage";
-import ModernizationPage from "@/features/modernization/pages/ModernizationPage";
-import { ModernizationStepView } from "@/features/modernization/components/ModernizationStepView";
-import ResultPage from "@/features/result/pages/ResultPage";
-import { MigrationAnimationView } from "@/features/result/components/MigrationAnimationView";
-import { MigrationProgressView } from "@/features/result/components/MigrationProgressView";
-import { ResultReportView } from "@/features/result/components/ResultReportView";
-
 interface DiffLineEntry {
   type: "add" | "remove" | "context" | "hunk";
   oldLineNumber: number | null;

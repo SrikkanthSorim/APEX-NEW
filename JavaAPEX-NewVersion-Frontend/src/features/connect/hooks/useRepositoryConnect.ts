@@ -14,7 +14,7 @@ import {
   readSessionJson,
   WIZARD_REPO_URL_KEY,
   WIZARD_SELECTED_REPO_KEY,
-} from "../../../utils/migrationWizardStorage";
+} from "@/shared/utils/migrationWizardStorage";
 
 type AccessTokenValidationState = "idle" | "validating" | "valid" | "invalid";
 

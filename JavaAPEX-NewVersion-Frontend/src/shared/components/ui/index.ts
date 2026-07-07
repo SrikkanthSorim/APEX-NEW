@@ -2,7 +2,7 @@
  * Reusable UI components
  *
  * Usage:
- *   import { Button, Card, Container, PageHeader } from "@/components/ui";
+ *   import { Button, Card, Container, PageHeader } from "@/shared/components/ui";
  */
 export { default as Button } from "./Button";
 export type { ButtonProps, ButtonVariant, ButtonSize } from "./Button";

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { MigrationResult, FossaScanResult } from "@/features/result/services/resultService";
 import type { MigrationPreview } from "@/features/modernization/services/modernizationService";
-import { readSessionJson, WIZARD_MIGRATION_JOB_KEY } from "../../../utils/migrationWizardStorage";
+import { readSessionJson, WIZARD_MIGRATION_JOB_KEY } from "@/shared/utils/migrationWizardStorage";
 
 type GeneratedDocumentKind = "brd";
 type DocumentPrefetchStatus = "idle" | "loading" | "ready" | "error";
