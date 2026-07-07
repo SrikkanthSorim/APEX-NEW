@@ -1,10 +1,10 @@
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import AppShell from "./components/layout/AppShell";
+import AppShell from "@/app/shell/AppShell";
 import AuthCallback from "@/features/auth/pages/AuthCallback";
 import "./App.css";
 
-const MigrationWizard = lazy(() => import("./components/MigrationWizard"));
+const MigrationWizardPage = lazy(() => import("@/features/wizard/pages/MigrationWizardPage"));
 
 export default function App() {
   return (
@@ -29,7 +29,7 @@ export default function App() {
         >
           <Routes>
             <Route path="/auth/callback" element={<AuthCallback />} />
-            <Route path="/*" element={<MigrationWizard />} />
+            <Route path="/*" element={<MigrationWizardPage />} />
           </Routes>
         </Suspense>
       </AppShell>

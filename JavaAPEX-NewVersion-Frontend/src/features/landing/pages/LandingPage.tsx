@@ -1,7 +1,8 @@
 import React from "react";
-import Header from "../../components/layout/Header";
-import Footer from "../../components/layout/Footer";
+import Header from "../components/Header";
+import Footer from "../components/Footer";
 import { GITHUB_AUTH_LOGIN_URL } from "@/services/config/env";
+import "./LandingPage.css";
 
 export default function LandingPage({ onStart }: { onStart: () => void }) {
   const styles: { [key: string]: React.CSSProperties } = {

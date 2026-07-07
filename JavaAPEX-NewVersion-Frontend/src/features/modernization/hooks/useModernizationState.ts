@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { PersistedWizardFormState } from "../../../utils/migrationWizardStorage";
+import type { PersistedWizardFormState } from "@/shared/utils/migrationWizardStorage";
 
 export function useModernizationState(persistedFormState: PersistedWizardFormState | null) {
   const [runTests, setRunTests] = useState(persistedFormState?.runTests ?? true);

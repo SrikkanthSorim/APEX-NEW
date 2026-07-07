@@ -1,0 +1,26 @@
+.ui-dark-link {
+  transition: color 0.3s ease;
+}
+
+.ui-dark-link:hover {
+  color: #3b82f6 !important;
+}
+
+.ui-soft-button {
+  transition: background-color 0.3s ease, border-color 0.3s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.ui-soft-button:hover:not(:disabled) {
+  background-color: #e2e8f0 !important;
+  border-color: #64748b !important;
+}
+
+.ui-dark-icon-button {
+  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.ui-dark-icon-button:hover:not(:disabled) {
+  background-color: #3b82f6 !important;
+  border-color: #3b82f6 !important;
+  color: #fff !important;
+}

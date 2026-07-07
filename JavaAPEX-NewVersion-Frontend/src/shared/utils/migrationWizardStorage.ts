@@ -41,16 +41,6 @@ export interface PersistedWizardFormState {
   analysisCompletedSeconds: number;
 }
 
-export const STEP_ROUTES: Record<number, string> = {
-  1: "/",
-  2: "/discovery",
-  3: "/strategy",
-  4: "/migration",
-  5: "/migrating",
-  6: "/progress",
-  7: "/report",
-};
-
 export const WIZARD_REPO_URL_KEY = "migration_wizard_repo_url";
 export const WIZARD_SELECTED_REPO_KEY = "migration_wizard_selected_repo";
 export const WIZARD_REPO_ANALYSIS_KEY = "migration_wizard_repo_analysis";
@@ -65,12 +55,6 @@ export const WIZARD_STORAGE_KEYS = [
   WIZARD_FORM_STATE_KEY,
   WIZARD_MIGRATION_JOB_KEY,
 ];
-
-export const getStepFromPath = (pathname: string) => {
-  const normalizedPath = pathname.replace(/\/+$/, "") || "/";
-  const entry = Object.entries(STEP_ROUTES).find(([, route]) => route === normalizedPath);
-  return entry ? Number(entry[0]) : 1;
-};
 
 export const readPersistedValue = (key: string) => {
   if (typeof window === "undefined") return null;

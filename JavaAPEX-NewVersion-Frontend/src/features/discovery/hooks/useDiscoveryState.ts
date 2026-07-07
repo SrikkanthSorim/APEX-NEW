@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { readSessionJson, type PersistedWizardFormState, WIZARD_REPO_ANALYSIS_KEY } from "../../../utils/migrationWizardStorage";
+import { readSessionJson, type PersistedWizardFormState, WIZARD_REPO_ANALYSIS_KEY } from "@/shared/utils/migrationWizardStorage";
 import type {
   MicroserviceEligibilityResult,
   RepoAnalysis,

@@ -1,5 +1,6 @@
 import React from "react";
-import apexLogo from "../../assets/apexlogo.png";
+import apexLogo from "../../../assets/apexlogo.png";
+import "./Header.css";
 
 interface HeaderProps {
   showBackButton?: boolean;
