@@ -46,6 +46,8 @@ export const WIZARD_SELECTED_REPO_KEY = "migration_wizard_selected_repo";
 export const WIZARD_REPO_ANALYSIS_KEY = "migration_wizard_repo_analysis";
 export const WIZARD_FORM_STATE_KEY = "migration_wizard_form_state";
 export const WIZARD_MIGRATION_JOB_KEY = "migration_wizard_migration_job";
+// Job id created by the Connect stage (POST /api/v1/connect), reused downstream.
+export const WIZARD_JOB_ID_KEY = "migration_wizard_job_id";
 const LEGACY_WIZARD_LOCAL_PROJECT_PATH_KEY = "migration_wizard_local_project_path";
 
 export const WIZARD_STORAGE_KEYS = [
@@ -54,6 +56,7 @@ export const WIZARD_STORAGE_KEYS = [
   WIZARD_REPO_ANALYSIS_KEY,
   WIZARD_FORM_STATE_KEY,
   WIZARD_MIGRATION_JOB_KEY,
+  WIZARD_JOB_ID_KEY,
 ];
 
 export const readPersistedValue = (key: string) => {

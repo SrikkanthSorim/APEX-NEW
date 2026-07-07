@@ -30,10 +30,10 @@ export function ConnectStepView({ connect, onError, onClearRepoAnalysis }: Conne
     setSelectedRepo,
     githubToken,
     setGithubToken,
-    isPrivateRepo: _isPrivateRepo,
     setIsPrivateRepo,
     patToken,
     setPatToken,
+    connecting,
     repoAccessCheckLoading,
     accessTokenValidationState,
     accessTokenValidationMessage,
@@ -412,20 +412,28 @@ export function ConnectStepView({ connect, onError, onClearRepoAnalysis }: Conne
           style={{
             ...styles.primaryBtn,
             opacity:
-              !urlValidation.valid || (shouldShowPatInput && accessTokenValidationState !== "valid")
+              connecting ||
+              !urlValidation.valid ||
+              (shouldShowPatInput && accessTokenValidationState !== "valid")
                 ? 0.5
                 : 1,
           }}
-          disabled={!urlValidation.valid || (shouldShowPatInput && accessTokenValidationState !== "valid")}
+          disabled={
+            connecting ||
+            !urlValidation.valid ||
+            (shouldShowPatInput && accessTokenValidationState !== "valid")
+          }
           onClick={() => void handleRepositoryContinue()}
         >
-          {renderForwardButtonLabel(
-            shouldShowPatInput && accessTokenValidationState === "valid"
-              ? "Continue with Authenticated Repository"
-              : shouldShowPatInput
-                ? "Validate PAT to Continue"
-                : "Continue"
-          )}
+          {connecting
+            ? "Verifying repository..."
+            : renderForwardButtonLabel(
+                shouldShowPatInput && accessTokenValidationState === "valid"
+                  ? "Continue with Authenticated Repository"
+                  : shouldShowPatInput
+                    ? "Validate PAT to Continue"
+                    : "Continue"
+              )}
         </button>
       </div>
     </div>

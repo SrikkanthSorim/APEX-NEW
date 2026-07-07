@@ -14,9 +14,7 @@ import {
   downloadHtmlDocument,
 } from "@/features/result/utils/migrationWizardPdf";
 import {
-  analyzeRepoUrl,
   analyzeLocalProject,
-  getRepoVisibility,
   listLocalProjectFiles,
   getLocalProjectFileContent,
 } from "@/features/connect/services/connectService";
@@ -27,6 +25,7 @@ import {
   getLocalProjectMicroserviceEligibility,
   generateGithubDocument,
   generateLocalProjectDocument,
+  runDiscovery,
   type GithubDocumentResponse,
 } from "@/features/discovery/services/discoveryService";
 import {
@@ -699,7 +698,7 @@ export function useWizardController() {
     urlValidation,
     showEnterpriseToken,
     currentToken,
-    resetAccessTokenValidationState,
+    jobId,
   } = connectState;
   const currentMigrationApproach =
     migrationApproach === "branch"
@@ -3707,14 +3706,22 @@ export function useWizardController() {
 
   useEffect(() => {
     if (step === 2 && selectedRepo && !repoAnalysis) {
+      const isLocalProject = isLocalRepoRef(selectedRepo.url);
+
+      // GitHub repositories are analyzed by the Discovery backend, which clones
+      // and inspects the repo using the jobId created during Connect.
+      if (!isLocalProject && !jobId) {
+        setError("We couldn't find your Connect session. Please reconnect the repository.");
+        return;
+      }
+
       setAnalysisLoading(true);
       setError("");
 
-      const analyzePromise = isLocalRepoRef(selectedRepo.url)
-          ? analyzeLocalProject(extractLocalRepoPath(selectedRepo.url))
+      const analyzePromise = isLocalProject
+        ? analyzeLocalProject(extractLocalRepoPath(selectedRepo.url))
             .then(async (result) => enrichAnalysisWithPomVersion(result.analysis, selectedRepo.url, ""))
-        : analyzeRepoUrl(selectedRepo.url, currentToken, true)
-            .then(async (result) => enrichAnalysisWithPomVersion(result.analysis, selectedRepo.url, currentToken));
+        : runDiscovery(jobId, currentToken).then((result) => result.analysis);
 
       analyzePromise
         .then((analysis) => applyRepositoryAnalysis(analysis))
@@ -3746,6 +3753,7 @@ export function useWizardController() {
     applyRepositoryAnalysis,
     currentToken,
     enrichAnalysisWithPomVersion,
+    jobId,
     repoAnalysis,
     selectedRepo,
     setAccessTokenValidationMessage,
@@ -3805,83 +3813,37 @@ export function useWizardController() {
     };
   }, [step, repoAnalysis, selectedSourceVersion, riskLevel, sourceAlreadyAtLatestSupportedVersion]);
 
+  // Passive repo-visibility pre-check (disabled).
+  // Repository visibility (PUBLIC/PRIVATE) and access are now detected by the
+  // Connect backend via POST /api/v1/connect, which runs on "Continue"/"Validate"
+  // and reveals the PAT card with a clear message when a token is required.
+  // The previous keystroke-time probe called a separate endpoint on every wizard
+  // re-render (an unstable-callback dependency), producing a storm of requests,
+  // so it is intentionally left as a no-op that only clears the loading flag.
   useEffect(() => {
-    if (step !== 1 || !urlValidation.valid || showEnterpriseToken || patToken.trim()) {
-      setRepoAccessCheckLoading(false);
-      return;
-    }
-
-    const normalizedUrl = urlValidation.normalizedUrl;
-    let cancelled = false;
-
-    // Show loading immediately so the "Have a PAT?" hyperlink doesn't flash
-    // before the debounced visibility check starts.
-    setRepoAccessCheckLoading(true);
-
-    const timer = setTimeout(() => {
-
-        getRepoVisibility(normalizedUrl, currentToken)
-        .then((visibility) => {
-          if (cancelled) return;
-          if (visibility.requires_token || visibility.visibility === "private") {
-            setIsPrivateRepo(true);
-            setError("");
-            resetAccessTokenValidationState();
-            return;
-          }
-
-          setIsPrivateRepo(false);
-          setError("");
-        })
-        .catch((err) => {
-          if (cancelled) return;
-          // If the backend returned 400 (invalid URL parse), don't show PAT card.
-          // For all other errors (network failures, 500, timeouts, etc.),
-          // conservatively treat as private — the backend's anonymous fallback
-          // succeeds for public repos, so reaching here means the repo is
-          // genuinely private/inaccessible or the server couldn't be reached.
-          const isUrlError = err?.status === 400;
-          const message = err instanceof Error ? err.message : "";
-          const shouldShowPrivateRepoState = !isUrlError && isPrivateRepoAccessError(message);
-          setIsPrivateRepo(shouldShowPrivateRepoState);
-          setError(shouldShowPrivateRepoState ? "" : message || "");
-          if (shouldShowPrivateRepoState) {
-            resetAccessTokenValidationState();
-          }
-        })
-        .finally(() => {
-          if (!cancelled) {
-            setRepoAccessCheckLoading(false);
-          }
-        });
-    }, 700);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [
-    currentToken,
-    patToken,
-    resetAccessTokenValidationState,
-    setIsPrivateRepo,
-    setRepoAccessCheckLoading,
-    showEnterpriseToken,
-    step,
-    urlValidation.normalizedUrl,
-    urlValidation.valid,
-  ]);
+    setRepoAccessCheckLoading(false);
+  }, [step, urlValidation.valid, urlValidation.normalizedUrl, setRepoAccessCheckLoading]);
 
   useEffect(() => {
     if (step === 2 && selectedRepo && repoAnalysis && !analysisLoading) {
-      const filesPromise = isLocalRepoRef(selectedRepo.url)
+      const isLocalProject = isLocalRepoRef(selectedRepo.url);
+      const filesPromise = isLocalProject
         ? listLocalProjectFiles(extractLocalRepoPath(selectedRepo.url), currentPath)
         : listRepoFiles(selectedRepo.url, currentToken, currentPath);
       filesPromise
         .then((response) => {
           setRepoFiles(response.files);
         })
-        .catch((err) => setError(err.message || "Failed to list repository files."))
+        .catch((err) => {
+          // The GitHub file-browser endpoint is not part of the Discovery stage
+          // yet — fail quietly so the analysis summary still renders. Real errors
+          // are surfaced only for local projects (whose endpoint does exist).
+          if (isLocalProject) {
+            setError(err.message || "Failed to list project files.");
+          } else {
+            setRepoFiles([]);
+          }
+        })
         .finally(() => {
           if (!currentPath) {
             setRepoPreviewInitialized(true);
