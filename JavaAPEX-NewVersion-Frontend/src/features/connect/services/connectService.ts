@@ -1,5 +1,73 @@
-import { requestJson } from "@/services/http/client";
+import { performRequest, requestJson } from "@/services/http/client";
 import type { RepoAnalysis, RepoFile, RepoInfo } from "@/shared/types/domain";
+
+/**
+ * Connect stage (Step 1) — talks to the new layered backend endpoint
+ * `POST /api/v1/connect`. This only validates the repository URL, detects
+ * PUBLIC/PRIVATE visibility, verifies access, and creates a migration job id.
+ * No cloning or migration happens here.
+ */
+export type RepoVisibility = "PUBLIC" | "PRIVATE";
+
+export type ConnectAccessStatus =
+  | "ACCESS_GRANTED"
+  | "ACCESS_DENIED"
+  | "NOT_FOUND"
+  | "INVALID_URL"
+  | "SERVICE_ERROR";
+
+export interface ConnectRepositoryResult {
+  jobId: string;
+  repoUrl: string;
+  owner: string;
+  repoName: string;
+  repoVisibility: RepoVisibility;
+  accessStatus: ConnectAccessStatus;
+  message: string;
+}
+
+export class ConnectRepositoryApiError extends Error {
+  accessStatus: ConnectAccessStatus;
+  httpStatus: number;
+
+  constructor(message: string, accessStatus: ConnectAccessStatus, httpStatus: number) {
+    super(message);
+    this.name = "ConnectRepositoryApiError";
+    this.accessStatus = accessStatus;
+    this.httpStatus = httpStatus;
+  }
+}
+
+/**
+ * Verify repository access and create a migration job.
+ * Reads the response body on both success and error so the backend's clean,
+ * user-friendly `message`/`accessStatus` are always surfaced.
+ */
+export async function connectRepository(
+  repoUrl: string,
+  githubToken?: string
+): Promise<ConnectRepositoryResult> {
+  const response = await performRequest("/v1/connect", {
+    method: "POST",
+    body: {
+      repoUrl,
+      githubToken: githubToken?.trim() ? githubToken.trim() : undefined,
+    },
+  });
+
+  const data = (await response.json().catch(() => null)) as
+    | (Partial<ConnectRepositoryResult> & { accessStatus?: ConnectAccessStatus; message?: string })
+    | null;
+
+  if (!response.ok || !data || !data.jobId) {
+    const accessStatus = (data?.accessStatus as ConnectAccessStatus) ?? "SERVICE_ERROR";
+    const message =
+      data?.message ?? "We couldn't verify the repository right now. Please try again.";
+    throw new ConnectRepositoryApiError(message, accessStatus, response.status);
+  }
+
+  return data as ConnectRepositoryResult;
+}
 
 export interface RepoUrlAnalysis {
   repo_url: string;

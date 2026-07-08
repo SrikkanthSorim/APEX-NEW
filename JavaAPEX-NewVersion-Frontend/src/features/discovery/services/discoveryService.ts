@@ -3,6 +3,156 @@ import { APP_BASE_URL } from "@/services/config/env";
 import type { RepoFilesResponse, FileContentResponse } from "@/features/connect/services/connectService";
 import type { DependencyInfo, RepoAnalysis, MicroserviceEligibilityResult } from "@/shared/types/domain";
 
+/* -------------------------------------------------------------------------- */
+/* Discovery stage (Step 2) — POST /api/v1/discovery/{jobId}                    */
+/*                                                                              */
+/* Clones the connected repo into the backend workspace and analyzes it        */
+/* (read-only). Returns a clean summary which we map onto the RepoAnalysis      */
+/* shape the existing Discovery UI renders.                                     */
+/* -------------------------------------------------------------------------- */
+
+export interface DiscoveryDependency {
+  groupId: string;
+  artifactId: string;
+  version: string | null;
+}
+
+export interface DiscoveryProject {
+  buildTool: string;
+  currentJavaVersion: string;
+  springBootVersion: string | null;
+  projectType: string;
+  multiModule: boolean;
+  modules: string[];
+  dependenciesCount: number;
+  frontendDetected: boolean;
+  frontendType: string | null;
+  // extras used to faithfully populate the existing UI
+  dependencies?: DiscoveryDependency[];
+  hasTests?: boolean;
+  javaFileCount?: number;
+  defaultBranch?: string;
+  buildWarning?: string | null;
+  frontend?: { detected: boolean; type: string; path: string | null; packageManager: string | null };
+  detectedFiles?: { pomXml: boolean; buildGradle: boolean; buildGradleKts: boolean; packageJson: boolean };
+  sourceLayout?: { hasSrcMain: boolean; hasSrcTest: boolean };
+}
+
+export interface DiscoveryResponse {
+  jobId: string;
+  status: string;
+  message: string;
+  repository: { repoUrl: string; owner: string; repoName: string; visibility: string };
+  project: DiscoveryProject;
+  nextStep: string;
+}
+
+export type DiscoveryStatus =
+  | "DISCOVERY_COMPLETED"
+  | "CONNECT_REPORT_NOT_FOUND"
+  | "CLONE_FAILED"
+  | "UNSUPPORTED_PROJECT"
+  | "DISCOVERY_FAILED";
+
+export class DiscoveryApiError extends Error {
+  status: DiscoveryStatus | string;
+  httpStatus: number;
+
+  constructor(message: string, status: DiscoveryStatus | string, httpStatus: number) {
+    super(message);
+    this.name = "DiscoveryApiError";
+    this.status = status;
+    this.httpStatus = httpStatus;
+  }
+}
+
+export interface DiscoveryAnalysisResult {
+  repo_url: string;
+  owner: string;
+  repo: string;
+  analysis: RepoAnalysis;
+  discovery: DiscoveryResponse;
+}
+
+function normalizeBuildTool(buildTool: string): string | null {
+  const value = (buildTool || "").toUpperCase();
+  if (value === "MAVEN") return "maven";
+  if (value === "GRADLE") return "gradle";
+  return null;
+}
+
+function normalizeJavaVersion(version: string | null | undefined): string | null {
+  if (!version) return null;
+  const value = version.trim();
+  return value && value.toUpperCase() !== "UNKNOWN" ? value : null;
+}
+
+/** Map the backend discovery summary onto the RepoAnalysis the Discovery UI reads. */
+export function mapDiscoveryToRepoAnalysis(response: DiscoveryResponse): RepoAnalysis {
+  const { repository, project } = response;
+  const javaVersion = normalizeJavaVersion(project.currentJavaVersion);
+  const dependencies: DependencyInfo[] = (project.dependencies ?? []).map((dep) => ({
+    group_id: dep.groupId,
+    artifact_id: dep.artifactId,
+    current_version: dep.version ?? "",
+    new_version: null,
+    status: "detected",
+  }));
+
+  return {
+    name: repository.repoName,
+    full_name: `${repository.owner}/${repository.repoName}`,
+    default_branch: project.defaultBranch || "main",
+    language: "Java",
+    build_tool: normalizeBuildTool(project.buildTool),
+    java_version: javaVersion,
+    java_version_from_build: javaVersion,
+    java_files: [],
+    has_tests: Boolean(project.hasTests),
+    dependencies,
+    api_endpoints: [],
+    detected_frameworks: [],
+    structure: {
+      has_pom_xml: Boolean(project.detectedFiles?.pomXml),
+      has_build_gradle: Boolean(project.detectedFiles?.buildGradle),
+      has_build_gradle_kts: Boolean(project.detectedFiles?.buildGradleKts),
+      has_src_main: Boolean(project.sourceLayout?.hasSrcMain),
+      has_src_test: Boolean(project.sourceLayout?.hasSrcTest),
+    },
+  };
+}
+
+/**
+ * Run discovery for a job. Reads the response body on both success and error so
+ * the backend's clean status/message are always surfaced. Returns the mapped
+ * RepoAnalysis (plus the raw discovery summary) for the Discovery UI.
+ */
+export async function runDiscovery(jobId: string, githubToken?: string): Promise<DiscoveryAnalysisResult> {
+  const response = await performRequest(`/v1/discovery/${encodeURIComponent(jobId)}`, {
+    method: "POST",
+    body: { githubToken: githubToken?.trim() ? githubToken.trim() : undefined },
+  });
+
+  const data = (await response.json().catch(() => null)) as
+    | (Partial<DiscoveryResponse> & { status?: string; message?: string })
+    | null;
+
+  if (!response.ok || !data || data.status !== "DISCOVERY_COMPLETED" || !data.project) {
+    const status = (data?.status as DiscoveryStatus) ?? "DISCOVERY_FAILED";
+    const message = data?.message ?? "Repository discovery failed. Please try again.";
+    throw new DiscoveryApiError(message, status, response.status);
+  }
+
+  const discovery = data as DiscoveryResponse;
+  return {
+    repo_url: discovery.repository.repoUrl,
+    owner: discovery.repository.owner,
+    repo: discovery.repository.repoName,
+    analysis: mapDiscoveryToRepoAnalysis(discovery),
+    discovery,
+  };
+}
+
 interface MicroserviceEligibilityAnalysisSnapshot {
   build_tool: string | null;
   java_file_count: number;

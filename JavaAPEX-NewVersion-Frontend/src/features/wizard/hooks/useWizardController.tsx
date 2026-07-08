@@ -27,6 +27,7 @@ import {
   getLocalProjectMicroserviceEligibility,
   generateGithubDocument,
   generateLocalProjectDocument,
+  runDiscovery,
   type GithubDocumentResponse,
 } from "@/features/discovery/services/discoveryService";
 import {
@@ -700,6 +701,7 @@ export function useWizardController() {
     showEnterpriseToken,
     currentToken,
     resetAccessTokenValidationState,
+    jobId,
   } = connectState;
   const currentMigrationApproach =
     migrationApproach === "branch"
@@ -3707,14 +3709,19 @@ export function useWizardController() {
 
   useEffect(() => {
     if (step === 2 && selectedRepo && !repoAnalysis) {
+      const isLocalProject = isLocalRepoRef(selectedRepo.url);
+
       setAnalysisLoading(true);
       setError("");
 
-      const analyzePromise = isLocalRepoRef(selectedRepo.url)
-          ? analyzeLocalProject(extractLocalRepoPath(selectedRepo.url))
+      const analyzePromise = isLocalProject
+        ? analyzeLocalProject(extractLocalRepoPath(selectedRepo.url))
             .then(async (result) => enrichAnalysisWithPomVersion(result.analysis, selectedRepo.url, ""))
-        : analyzeRepoUrl(selectedRepo.url, currentToken, true)
-            .then(async (result) => enrichAnalysisWithPomVersion(result.analysis, selectedRepo.url, currentToken));
+        : jobId
+          ? runDiscovery(jobId, currentToken)
+              .then(async (result) => enrichAnalysisWithPomVersion(result.analysis, selectedRepo.url, currentToken))
+          : analyzeRepoUrl(selectedRepo.url, currentToken, true)
+              .then(async (result) => enrichAnalysisWithPomVersion(result.analysis, selectedRepo.url, currentToken));
 
       analyzePromise
         .then((analysis) => applyRepositoryAnalysis(analysis))
@@ -3746,6 +3753,7 @@ export function useWizardController() {
     applyRepositoryAnalysis,
     currentToken,
     enrichAnalysisWithPomVersion,
+    jobId,
     repoAnalysis,
     selectedRepo,
     setAccessTokenValidationMessage,
@@ -3874,14 +3882,24 @@ export function useWizardController() {
 
   useEffect(() => {
     if (step === 2 && selectedRepo && repoAnalysis && !analysisLoading) {
-      const filesPromise = isLocalRepoRef(selectedRepo.url)
+      const isLocalProject = isLocalRepoRef(selectedRepo.url);
+      const filesPromise = isLocalProject
         ? listLocalProjectFiles(extractLocalRepoPath(selectedRepo.url), currentPath)
         : listRepoFiles(selectedRepo.url, currentToken, currentPath);
       filesPromise
         .then((response) => {
           setRepoFiles(response.files);
         })
-        .catch((err) => setError(err.message || "Failed to list repository files."))
+        .catch((err) => {
+          // The GitHub file-browser endpoint is not part of the Discovery stage
+          // yet — fail quietly so the analysis summary still renders. Real errors
+          // are surfaced only for local projects (whose endpoint does exist).
+          if (isLocalProject) {
+            setError(err.message || "Failed to list project files.");
+          } else {
+            setRepoFiles([]);
+          }
+        })
         .finally(() => {
           if (!currentPath) {
             setRepoPreviewInitialized(true);

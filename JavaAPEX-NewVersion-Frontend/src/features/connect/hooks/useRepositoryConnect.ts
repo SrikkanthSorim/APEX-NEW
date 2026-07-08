@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import {
+  connectRepository,
+  ConnectRepositoryApiError,
   getLocalProjectCapabilities,
   getRepoVisibility,
   uploadLocalProject,
   uploadLocalProjectChunk,
+  type ConnectRepositoryResult,
   type LocalProjectAnalysisResponse,
   type LocalProjectCapabilities,
 } from "@/features/connect/services/connectService";
@@ -12,6 +15,8 @@ import type { RepoAnalysis, RepoFile, RepoInfo } from "@/shared/types/domain";
 import {
   readPersistedValue,
   readSessionJson,
+  writeSessionValue,
+  WIZARD_JOB_ID_KEY,
   WIZARD_REPO_URL_KEY,
   WIZARD_SELECTED_REPO_KEY,
 } from "@/shared/utils/migrationWizardStorage";
@@ -81,6 +86,27 @@ const normalizeGithubUrl = (url: string): { valid: boolean; normalizedUrl: strin
   };
 };
 
+/**
+ * Build the URL sent to `POST /api/v1/connect`. The Connect backend currently
+ * handles github.com repositories only; for GitLab / GitHub Enterprise / other
+ * refs this returns null and the caller keeps the existing (non-backend) flow.
+ */
+const buildConnectUrl = (value: string): string | null => {
+  const normalized = value.trim();
+  if (!normalized) return null;
+
+  if (/^https?:\/\//i.test(normalized)) {
+    return /(^|\/\/)(www\.)?github\.com\//i.test(normalized) ? normalized : null;
+  }
+
+  // Short "owner/repo" form -> expand to a canonical github.com URL.
+  if (/^[^/\s]+\/[^/\s]+$/.test(normalized)) {
+    return `https://github.com/${normalized}`;
+  }
+
+  return null;
+};
+
 export function useRepositoryConnect({
   persistedIsPrivateRepo,
   persistedPatToken,
@@ -105,6 +131,14 @@ export function useRepositoryConnect({
   const [githubUserLogin, setGithubUserLogin] = useState("");
   const [isPrivateRepo, setIsPrivateRepo] = useState(persistedIsPrivateRepo ?? false);
   const [patToken, setPatToken] = useState(persistedPatToken ?? "");
+  const [jobId, setJobId] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
+    return readPersistedValue(WIZARD_JOB_ID_KEY) || "";
+  });
+  const [connecting, setConnecting] = useState(false);
+  // Caches the last successful connect (keyed by url+token) so validating and
+  // then continuing does not create a duplicate migration job.
+  const lastConnectRef = useRef<{ url: string; token: string; result: ConnectRepositoryResult } | null>(null);
   const [repoAccessCheckLoading, setRepoAccessCheckLoading] = useState(false);
   const [accessTokenValidationState, setAccessTokenValidationState] =
     useState<AccessTokenValidationState>("idle");
@@ -130,9 +164,18 @@ export function useRepositoryConnect({
   }, [githubToken, patToken, showEnterpriseToken, isPrivateRepo]);
   const shouldShowPatInput = showEnterpriseToken || isPrivateRepo;
 
-  const resetAccessTokenValidationState = () => {
+  const resetAccessTokenValidationState = useCallback(() => {
     setAccessTokenValidationState("idle");
     setAccessTokenValidationMessage("");
+  }, []);
+
+  const persistConnectResult = (result: ConnectRepositoryResult, connectUrl: string, token: string) => {
+    setJobId(result.jobId);
+    writeSessionValue(WIZARD_JOB_ID_KEY, result.jobId);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(WIZARD_JOB_ID_KEY, result.jobId);
+    }
+    lastConnectRef.current = { url: connectUrl, token, result };
   };
 
   const handleAccessTokenValidate = async () => {
@@ -150,6 +193,32 @@ export function useRepositoryConnect({
 
     setAccessTokenValidationState("validating");
     setAccessTokenValidationMessage("");
+
+    const connectUrl = buildConnectUrl(urlValidation.normalizedUrl);
+
+    // github.com repositories are validated through the Connect backend, which
+    // also creates the migration job (reused on Continue). Other refs keep the
+    // existing visibility check.
+    if (connectUrl) {
+      try {
+        const result = await connectRepository(connectUrl, activeAccessToken);
+        persistConnectResult(result, connectUrl, activeAccessToken);
+        const detectedPrivateRepo = result.repoVisibility === "PRIVATE";
+        setIsPrivateRepo(detectedPrivateRepo);
+        setError("");
+        setAccessTokenValidationState("valid");
+        setAccessTokenValidationMessage(
+          detectedPrivateRepo
+            ? "Token validated. Private repository access looks ready."
+            : "Token validated. Repository access looks ready."
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "We couldn't validate this token yet.";
+        setAccessTokenValidationState("invalid");
+        setAccessTokenValidationMessage(message);
+      }
+      return;
+    }
 
     try {
       const visibility = await getRepoVisibility(urlValidation.normalizedUrl, activeAccessToken);
@@ -197,6 +266,44 @@ export function useRepositoryConnect({
       setAccessTokenValidationState("invalid");
       setAccessTokenValidationMessage("Enter a GitHub Personal Access Token with repo scope to analyze this private repository.");
       return;
+    }
+
+    // For github.com repositories, verify access and create the migration job
+    // via the Connect backend before advancing. Navigation only happens on
+    // success. Reuse a previously validated connect to avoid duplicate jobs.
+    const connectUrl = buildConnectUrl(normalizedUrl);
+    if (connectUrl) {
+      const cached = lastConnectRef.current;
+      const alreadyConnected = cached?.url === connectUrl && cached?.token === (token || "");
+
+      if (!alreadyConnected) {
+        setConnecting(true);
+        setError("");
+        try {
+          const result = await connectRepository(connectUrl, token || undefined);
+          persistConnectResult(result, connectUrl, token || "");
+          setIsPrivateRepo(result.repoVisibility === "PRIVATE");
+        } catch (err) {
+          setConnecting(false);
+          const accessStatus =
+            err instanceof ConnectRepositoryApiError ? err.accessStatus : "SERVICE_ERROR";
+          const message =
+            err instanceof Error ? err.message : "We couldn't verify the repository right now.";
+
+          // Private/denied/not-found: reveal the PAT field so the user can retry
+          // with a token and surface the clean backend message.
+          if (accessStatus === "ACCESS_DENIED" || accessStatus === "NOT_FOUND") {
+            setIsPrivateRepo(true);
+            resetAccessTokenValidationState();
+            setAccessTokenValidationState("invalid");
+            setAccessTokenValidationMessage(message);
+          } else {
+            setError(message);
+          }
+          return; // do not navigate on failure
+        }
+        setConnecting(false);
+      }
     }
 
     resetRepositorySelectionState();
@@ -444,6 +551,8 @@ export function useRepositoryConnect({
     setIsPrivateRepo,
     patToken,
     setPatToken,
+    jobId,
+    connecting,
     repoAccessCheckLoading,
     setRepoAccessCheckLoading,
     accessTokenValidationState,
