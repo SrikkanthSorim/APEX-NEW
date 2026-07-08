@@ -137,3 +137,93 @@ class UnsupportedProjectError(DiscoveryError):
         ),
     ) -> None:
         super().__init__(message)
+
+
+# --------------------------------------------------------------------------- #
+# Migration Config stage
+# --------------------------------------------------------------------------- #
+
+
+class MigrationConfigError(Exception):
+    """Base class for Migration-Config-stage failures.
+
+    Carries a stable ``status`` and a clean ``message`` that the API layer maps
+    onto ``{ jobId, status, message }``.
+    """
+
+    status: str = "MIGRATION_CONFIG_FAILED"
+    http_status: int = 500
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.message = message
+
+
+class MigrationJobNotFoundError(MigrationConfigError):
+    """No job on disk for the given id (Connect step not completed)."""
+
+    status = "JOB_NOT_FOUND"
+    http_status = 404
+
+    def __init__(
+        self,
+        message: str = "Migration job not found. Please start from the Connect step.",
+    ) -> None:
+        super().__init__(message)
+
+
+class InvalidMigrationConfigError(MigrationConfigError):
+    """The submitted migration configuration is invalid."""
+
+    status = "INVALID_MIGRATION_CONFIG"
+    http_status = 400
+
+    def __init__(self, message: str = "Invalid migration configuration.") -> None:
+        super().__init__(message)
+
+
+# --------------------------------------------------------------------------- #
+# Start Migration stage
+# --------------------------------------------------------------------------- #
+
+
+class MigrationExecutionError(Exception):
+    """Base class for Start-Migration failures surfaced at the API boundary.
+
+    Runtime failures during the async run are reported via the job's
+    ``status:"failed"`` + ``error_message`` rather than as HTTP errors; this is
+    used only for pre-flight validation on the start endpoint.
+    """
+
+    status: str = "MIGRATION_FAILED"
+    http_status: int = 500
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.message = message
+
+
+class DiscoveryReportRequiredError(MigrationExecutionError):
+    """Discovery must be completed before a migration can start."""
+
+    status = "DISCOVERY_REQUIRED"
+    http_status = 409
+
+    def __init__(
+        self,
+        message: str = "Run Discovery before starting the migration.",
+    ) -> None:
+        super().__init__(message)
+
+
+class PushFailedError(MigrationExecutionError):
+    """Creating the target repo or pushing the migrated code failed."""
+
+    status = "PUSH_FAILED"
+    http_status = 502
+
+    def __init__(
+        self,
+        message: str = "Failed to publish the migrated repository. Check the target token/permissions.",
+    ) -> None:
+        super().__init__(message)

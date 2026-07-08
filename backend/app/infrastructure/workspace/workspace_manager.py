@@ -38,3 +38,15 @@ class WorkspaceManager:
             logger.info("Removing existing original-repo before re-clone: %s", original.name)
             file_utils.remove_tree(original)
         original.parent.mkdir(parents=True, exist_ok=True)
+
+    def prepare_migrated_repo(self) -> None:
+        """Create a fresh ``migrated-repo`` as a copy of ``original-repo``.
+
+        The copy excludes ``.git`` so OpenRewrite works on a clean working tree
+        and the eventual push starts from a single fresh commit. ``original-repo``
+        is never modified.
+        """
+        original = self._paths.original_repo_dir
+        migrated = self._paths.migrated_repo_dir
+        logger.info("Preparing migrated-repo from original-repo (excluding .git)")
+        file_utils.copy_tree(original, migrated, exclude={".git"})

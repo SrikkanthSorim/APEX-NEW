@@ -29,9 +29,16 @@ class Settings(BaseSettings):
 
     # --- GitHub --------------------------------------------------------------
     github_api_base_url: str = "https://api.github.com"
-    # Optional server-side token used as a fallback when the caller does not
-    # supply one (e.g. to raise the unauthenticated rate limit). May be empty.
+    # Source-read token: fallback used when the caller doesn't supply one (raises
+    # the unauthenticated rate limit, clones private source repos). May be empty.
     github_token: str = ""
+    # Target/publish token: used by the Start Migration stage to create and push
+    # migrated repositories under the Javaapex org. Must belong to an account
+    # authorized on that org (repo scope, or fine-grained Administration +
+    # Contents: write). May be empty until the Start Migration stage is used.
+    github_target_token: str = ""
+    # GitHub owner (org/user) that migrated repositories are published under.
+    github_target_owner: str = "Javaapex"
     github_request_timeout_seconds: float = 15.0
 
     # --- Git / clone ---------------------------------------------------------
@@ -39,6 +46,35 @@ class Settings(BaseSettings):
     git_clone_timeout_seconds: float = 300.0
     # Clone only the latest commit to keep the workspace small and fast.
     git_clone_depth: int = 1
+
+    # --- Migration / OpenRewrite --------------------------------------------
+    # Pinned OpenRewrite plugin + recipe versions (reproducible migrations).
+    openrewrite_maven_plugin_version: str = "5.44.0"
+    openrewrite_gradle_plugin_version: str = "6.29.0"
+    rewrite_migrate_java_version: str = "2.29.0"
+    # Timeout (seconds) for a single OpenRewrite run (Maven/Gradle).
+    migration_timeout_seconds: float = 1800.0
+    # Identity used for the migrated-repo commit.
+    migration_commit_author_name: str = "Java APEX Migration Bot"
+    migration_commit_author_email: str = "migration-bot@javaapex.local"
+
+    # --- Build validation (post-migration "does it build?" check) -----------
+    # Whether to compile/package the migrated code and log BUILD SUCCESS/FAILED.
+    build_validation_enabled: bool = True
+    # Maven goals: build everything but skip running tests.
+    build_maven_args: str = "-B,-DskipTests,package"
+    # Gradle tasks: build but skip tests.
+    build_gradle_args: str = "build,-x,test,--no-daemon"
+    # Timeout (seconds) for the build.
+    build_timeout_seconds: float = 1200.0
+
+    @property
+    def build_maven_args_list(self) -> list[str]:
+        return [a for a in self.build_maven_args.split(",") if a]
+
+    @property
+    def build_gradle_args_list(self) -> list[str]:
+        return [a for a in self.build_gradle_args.split(",") if a]
 
     # --- Storage -------------------------------------------------------------
     # Root folder where per-job artifacts (reports, etc.) are written.

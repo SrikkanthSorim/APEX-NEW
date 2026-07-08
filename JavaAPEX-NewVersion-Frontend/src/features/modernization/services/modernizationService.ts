@@ -126,6 +126,64 @@ export async function previewMigration(request: MigrationRequest): Promise<Migra
   });
 }
 
+/* -------------------------------------------------------------------------- */
+/* Migration Config stage (Step 4) — POST /api/v1/migration-config/{jobId}     */
+/*                                                                              */
+/* Saves the chosen migration destination + options for the job. Migrated      */
+/* repositories are published under the configured GitHub owner (Javaapex) for */
+/* the "Create New Repository" mode. No repo creation / push happens here —     */
+/* that is the Start Migration stage.                                           */
+/* -------------------------------------------------------------------------- */
+
+export type MigrationDestinationMode =
+  | "CREATE_NEW_REPO"
+  | "EXISTING_REPO_BRANCH"
+  | "LOCAL_FOLDER";
+
+export interface MigrationDestinationConfig {
+  mode: MigrationDestinationMode;
+  targetOwner?: string;
+  targetHost?: string;
+  targetRepoName?: string;
+  targetRepoUrl?: string;
+  targetBranch?: string;
+  localFolder?: string;
+}
+
+export interface MigrationConfigPayload {
+  destination: MigrationDestinationConfig;
+  sourceRepoUrl?: string;
+  sourceJavaVersion?: string;
+  targetJavaVersion?: string;
+  buildTool?: string | null;
+  conversionTypes?: string[];
+  options?: {
+    runTests: boolean;
+    runSonar: boolean;
+    runFossa: boolean;
+    fixBusinessLogic: boolean;
+  };
+}
+
+export interface MigrationConfigResult {
+  jobId: string;
+  status: string;
+  message: string;
+  destination: MigrationDestinationConfig;
+  nextStep: string;
+}
+
+export async function saveMigrationConfig(
+  jobId: string,
+  config: MigrationConfigPayload
+): Promise<MigrationConfigResult> {
+  return requestJson<MigrationConfigResult>(
+    `/v1/migration-config/${encodeURIComponent(jobId)}`,
+    "Failed to save migration configuration",
+    { method: "POST", body: config }
+  );
+}
+
 export async function previewFunctionalTestScope(
   projectName: string,
   endpoints: { path: string; method: string; file?: string; controller?: string }[],

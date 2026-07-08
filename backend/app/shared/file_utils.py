@@ -79,6 +79,41 @@ def _iter_files(root: Path):
         yield path
 
 
+def find_shallowest_dir_with(
+    root: Path,
+    filenames: tuple[str, ...],
+    *,
+    max_depth: int = 5,
+) -> Path | None:
+    """Return the shallowest directory (at or under ``root``) that contains any
+    of ``filenames``.
+
+    Used to locate a Java project when its build file lives in a subfolder
+    (e.g. ``backend/pom.xml``) rather than the repo root. Noise directories are
+    skipped and the search is depth-bounded. Ties at the same depth prefer the
+    first match in a stable, sorted order.
+    """
+    targets = {name.lower() for name in filenames}
+    best_dir: Path | None = None
+    best_depth: int | None = None
+
+    for path in sorted(root.rglob("*")):
+        if not path.is_file() or path.name.lower() not in targets:
+            continue
+        relative_parts = path.relative_to(root).parts
+        if any(part in _SKIP_DIRS for part in relative_parts[:-1]):
+            continue
+        depth = len(relative_parts) - 1  # number of directories above the file
+        if depth > max_depth:
+            continue
+        if best_depth is None or depth < best_depth:
+            best_dir = path.parent
+            best_depth = depth
+            if depth == 0:
+                break  # can't get shallower than the root itself
+    return best_dir
+
+
 def remove_tree(path: Path) -> None:
     """Recursively delete ``path`` if it exists.
 
@@ -95,3 +130,47 @@ def remove_tree(path: Path) -> None:
             pass
 
     shutil.rmtree(path, onerror=_on_error)
+
+
+def _relative_files(root: Path) -> dict[str, Path]:
+    """Map of repo-relative posix path -> absolute path (noise dirs skipped)."""
+    return {path.relative_to(root).as_posix(): path for path in _iter_files(root)}
+
+
+def count_changed_files(original: Path, migrated: Path) -> int:
+    """Count files that differ between two trees (added, removed, or modified).
+
+    Both trees are compared with noise directories skipped. Used to report how
+    many files a migration changed, independent of the build tool's own output.
+    """
+    original_files = _relative_files(original)
+    migrated_files = _relative_files(migrated)
+
+    changed = 0
+    for rel in set(original_files) | set(migrated_files):
+        a = original_files.get(rel)
+        b = migrated_files.get(rel)
+        if a is None or b is None:
+            changed += 1
+            continue
+        try:
+            if a.read_bytes() != b.read_bytes():
+                changed += 1
+        except OSError:
+            changed += 1
+    return changed
+
+
+def copy_tree(src: Path, dst: Path, *, exclude: set[str] | None = None) -> None:
+    """Copy the ``src`` directory tree to ``dst`` (created fresh).
+
+    ``exclude`` names directories to skip at any level (e.g. ``{".git"}``) so the
+    copy is a clean working tree without VCS metadata.
+    """
+    exclude = exclude or set()
+    remove_tree(dst)
+
+    def _ignore(_dir: str, names: list[str]) -> set[str]:
+        return {name for name in names if name in exclude}
+
+    shutil.copytree(src, dst, ignore=_ignore)

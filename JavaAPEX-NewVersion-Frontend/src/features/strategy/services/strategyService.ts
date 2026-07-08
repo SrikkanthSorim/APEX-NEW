@@ -32,9 +32,41 @@ export interface JavaVersionRecommendationResponse {
   raw_recommendation?: Record<string, unknown>;
 }
 
-// Get available Java versions
+// Canonical Java release list used to populate the source/target dropdowns.
+// LTS releases are flagged so the UI can label them "(LTS)".
+const JAVA_RELEASES: { value: string; lts: boolean }[] = [
+  { value: "8", lts: true },
+  { value: "9", lts: false },
+  { value: "10", lts: false },
+  { value: "11", lts: true },
+  { value: "12", lts: false },
+  { value: "13", lts: false },
+  { value: "14", lts: false },
+  { value: "15", lts: false },
+  { value: "16", lts: false },
+  { value: "17", lts: true },
+  { value: "18", lts: false },
+  { value: "19", lts: false },
+  { value: "20", lts: false },
+  { value: "21", lts: true },
+  { value: "22", lts: false },
+  { value: "23", lts: false },
+  { value: "24", lts: false },
+  { value: "25", lts: true },
+];
+
+function buildJavaVersionOptions(): { value: string; label: string }[] {
+  return JAVA_RELEASES.map(({ value, lts }) => ({
+    value,
+    label: `Java ${value}${lts ? " (LTS)" : ""}`,
+  }));
+}
+
+// Get available Java versions. Served from the canonical list above (no network
+// round-trip) so the dropdowns always populate reliably.
 export async function getJavaVersions(): Promise<JavaVersionInfo> {
-  return requestJson<JavaVersionInfo>("/java-versions", "Failed to fetch Java versions");
+  const options = buildJavaVersionOptions();
+  return { source_versions: options, target_versions: options };
 }
 
 export async function getJavaVersionRecommendation(

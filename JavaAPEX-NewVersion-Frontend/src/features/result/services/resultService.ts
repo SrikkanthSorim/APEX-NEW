@@ -286,8 +286,11 @@ export interface MigrationJobSummary {
 }
 
 // Start migration
-export async function startMigration(request: MigrationRequest): Promise<MigrationResult> {
-  return requestJson<MigrationResult>("/migration/start", "Failed to start migration", {
+// Start Migration (Step 4) — OpenRewrite migration + publish to Javaapex.
+// Runs under the layered backend at /api/v1/migration/{jobId}/... and reuses the
+// Connect jobId so all stages share one workspace.
+export async function startMigration(jobId: string, request: MigrationRequest): Promise<MigrationResult> {
+  return requestJson<MigrationResult>(`/v1/migration/${jobId}/start`, "Failed to start migration", {
     method: "POST",
     body: request,
   });
@@ -295,21 +298,21 @@ export async function startMigration(request: MigrationRequest): Promise<Migrati
 
 // Get lightweight migration status
 export async function getMigrationStatus(jobId: string): Promise<MigrationJobSummary> {
-  return requestJson<MigrationJobSummary>(`/migration/${jobId}`, "Failed to get migration status");
+  return requestJson<MigrationJobSummary>(`/v1/migration/${jobId}/summary`, "Failed to get migration status");
 }
 
 export async function getMigrationDetail(jobId: string): Promise<MigrationResult> {
-  return requestJson<MigrationResult>(`/migration/${jobId}/detail`, "Failed to get migration detail");
+  return requestJson<MigrationResult>(`/v1/migration/${jobId}/detail`, "Failed to get migration detail");
 }
 
 export async function getMigrationStatusSummary(jobId: string): Promise<MigrationJobSummary> {
-  return requestJson<MigrationJobSummary>(`/migration/${jobId}/summary`, "Failed to get migration summary");
+  return requestJson<MigrationJobSummary>(`/v1/migration/${jobId}/summary`, "Failed to get migration summary");
 }
 
 // Get migration logs
 export async function getMigrationLogs(jobId: string): Promise<{ job_id: string; logs: string[] }> {
   return requestJson<{ job_id: string; logs: string[] }>(
-    `/migration/${jobId}/logs`,
+    `/v1/migration/${jobId}/logs`,
     "Failed to get migration logs"
   );
 }
