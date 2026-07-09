@@ -1,7 +1,21 @@
 # Java Migration Platform — Backend
 
-FastAPI backend for the Java migration platform. Implements the **Connect**
-(Step 1) and **Discovery** (Step 2) stages of the wizard.
+FastAPI backend for the Java migration platform. Implements **Connect** (Step 1),
+**Discovery** (Step 2), **Migration Config** (Step 4 destination), and
+**Start Migration** (OpenRewrite migration + publish to GitHub).
+
+> **Start Migration prerequisites (local):** JDK 21 + Maven on PATH (Gradle uses
+> each project's `gradlew`). Set `GITHUB_TARGET_TOKEN` (authorized on the target
+> owner) and `GITHUB_TARGET_OWNER` in `.env`.
+
+### Start Migration — `POST /api/v1/migration/{jobId}/start`
+Copies `original-repo` → `migrated-repo`, runs OpenRewrite (UpgradeToJava{target}
++ `javax`→`jakarta`) via Maven/Gradle, then creates a new repo under the target
+owner and pushes the result. Async (background thread); poll:
+`GET /api/v1/migration/{jobId}/summary` · `/detail` · `/logs`. Terminal statuses:
+`completed | failed`. The migrated code is published to
+`https://github.com/<owner>/<targetRepoName>` (returned as `target_repo`).
+Recipe/plugin versions are pinned in `core/config.py`. Tokens are masked in logs.
 
 ## Connect stage
 

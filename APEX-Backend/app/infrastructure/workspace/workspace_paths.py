@@ -37,6 +37,10 @@ class WorkspacePaths:
         return self.job_dir / "original-repo"
 
     @property
+    def migrated_repo_dir(self) -> Path:
+        return self.job_dir / "migrated-repo"
+
+    @property
     def reports_dir(self) -> Path:
         return self.job_dir / "reports"
 
@@ -53,5 +57,17 @@ class WorkspacePaths:
         return self.reports_dir / "discovery-report.json"
 
     @property
+    def migration_config_report_path(self) -> Path:
+        return self.reports_dir / "migration-config-report.json"
+
+    @property
+    def migration_report_path(self) -> Path:
+        return self.reports_dir / "migration-report.json"
+
+    @property
     def discovery_log_path(self) -> Path:
         return self.logs_dir / "discovery.log"
+
+    @property
+    def migration_log_path(self) -> Path:
+        return self.logs_dir / "migration.log"

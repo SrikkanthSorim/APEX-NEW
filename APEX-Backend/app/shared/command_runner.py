@@ -8,10 +8,20 @@ rather than raising on non-zero exit.
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Sequence
+
+
+def resolve_executable(name: str) -> str | None:
+    """Return the full path to an executable on PATH, or ``None`` if missing.
+
+    Needed on Windows where tools like ``mvn``/``gradle`` are ``.cmd`` scripts
+    that ``subprocess`` (via CreateProcess) will not resolve from a bare name.
+    """
+    return shutil.which(name)
 
 
 @dataclass(frozen=True)

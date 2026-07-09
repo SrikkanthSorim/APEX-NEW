@@ -83,3 +83,34 @@ class DiscoveryErrorResponse(BaseModel):
     message: str
 
     model_config = {"populate_by_name": True}
+
+
+class RepoFileEntryResponse(BaseModel):
+    """One folder/file entry in a repository listing."""
+
+    name: str
+    path: str
+    type: str
+    size: int
+    url: str = ""
+
+
+class RepoFilesResponse(BaseModel):
+    """Success body for ``GET /api/v1/discovery/{jobId}/files``."""
+
+    job_id: str = Field(..., alias="jobId")
+    path: str
+    files: list[RepoFileEntryResponse]
+
+    model_config = {"populate_by_name": True}
+
+
+class RepoFileContentResponse(BaseModel):
+    """Success body for ``GET /api/v1/discovery/{jobId}/file``."""
+
+    job_id: str = Field(..., alias="jobId")
+    file_path: str = Field(..., alias="filePath")
+    content: str
+    size: int
+
+    model_config = {"populate_by_name": True}

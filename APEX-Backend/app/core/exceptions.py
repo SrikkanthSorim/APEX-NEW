@@ -137,3 +137,244 @@ class UnsupportedProjectError(DiscoveryError):
         ),
     ) -> None:
         super().__init__(message)
+
+
+# --------------------------------------------------------------------------- #
+# Migration Config stage
+# --------------------------------------------------------------------------- #
+
+
+class MigrationConfigError(Exception):
+    """Base class for Migration-Config-stage failures.
+
+    Carries a stable ``status`` and a clean ``message`` that the API layer maps
+    onto ``{ jobId, status, message }``.
+    """
+
+    status: str = "MIGRATION_CONFIG_FAILED"
+    http_status: int = 500
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.message = message
+
+
+class MigrationJobNotFoundError(MigrationConfigError):
+    """No job on disk for the given id (Connect step not completed)."""
+
+    status = "JOB_NOT_FOUND"
+    http_status = 404
+
+    def __init__(
+        self,
+        message: str = "Migration job not found. Please start from the Connect step.",
+    ) -> None:
+        super().__init__(message)
+
+
+class InvalidMigrationConfigError(MigrationConfigError):
+    """The submitted migration configuration is invalid."""
+
+    status = "INVALID_MIGRATION_CONFIG"
+    http_status = 400
+
+    def __init__(self, message: str = "Invalid migration configuration.") -> None:
+        super().__init__(message)
+
+
+# --------------------------------------------------------------------------- #
+# Start Migration stage
+# --------------------------------------------------------------------------- #
+
+
+class MigrationExecutionError(Exception):
+    """Base class for Start-Migration failures surfaced at the API boundary.
+
+    Runtime failures during the async run are reported via the job's
+    ``status:"failed"`` + ``error_message`` rather than as HTTP errors; this is
+    used only for pre-flight validation on the start endpoint.
+    """
+
+    status: str = "MIGRATION_FAILED"
+    http_status: int = 500
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.message = message
+
+
+class DiscoveryReportRequiredError(MigrationExecutionError):
+    """Discovery must be completed before a migration can start."""
+
+    status = "DISCOVERY_REQUIRED"
+    http_status = 409
+
+    def __init__(
+        self,
+        message: str = "Run Discovery before starting the migration.",
+    ) -> None:
+        super().__init__(message)
+
+
+class PushFailedError(MigrationExecutionError):
+    """Creating the target repo or pushing the migrated code failed."""
+
+    status = "PUSH_FAILED"
+    http_status = 502
+
+    def __init__(
+        self,
+        message: str = "Failed to publish the migrated repository. Check the target token/permissions.",
+    ) -> None:
+        super().__init__(message)
+
+
+# --------------------------------------------------------------------------- #
+# Target Java Version Recommendation (Hugging Face LLM)
+# --------------------------------------------------------------------------- #
+
+
+class JavaVersionRecommendationError(Exception):
+    """Base class for Target Java Version Recommendation failures.
+
+    Carries a stable ``status`` and a clean ``message`` the API layer maps onto
+    ``{ status, message }``, mirroring the other stage exception groups.
+    """
+
+    status: str = "RECOMMENDATION_FAILED"
+    http_status: int = 502
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.message = message
+
+
+class InvalidJavaVersionError(JavaVersionRecommendationError):
+    """The supplied source Java version could not be parsed."""
+
+    status = "INVALID_SOURCE_VERSION"
+    http_status = 400
+
+    def __init__(self, message: str = "A valid detected source Java version is required.") -> None:
+        super().__init__(message)
+
+
+class LLMNotConfiguredError(JavaVersionRecommendationError):
+    """No Hugging Face token is configured — the feature is unavailable, not faked."""
+
+    status = "LLM_NOT_CONFIGURED"
+    http_status = 503
+
+    def __init__(
+        self,
+        message: str = "Hugging Face API token is not configured (set HF_TOKEN).",
+    ) -> None:
+        super().__init__(message)
+
+
+class LLMServiceError(JavaVersionRecommendationError):
+    """The Hugging Face API could not be reached or returned an error."""
+
+    status = "LLM_SERVICE_ERROR"
+    http_status = 502
+
+    def __init__(
+        self,
+        message: str = "The Hugging Face model could not be reached. Please try again.",
+    ) -> None:
+        super().__init__(message)
+
+
+class LLMResponseInvalidError(JavaVersionRecommendationError):
+    """The model responded, but not with a usable recommendation."""
+
+    status = "LLM_RESPONSE_INVALID"
+    http_status = 502
+
+    def __init__(
+        self,
+        message: str = "The Hugging Face model returned an unusable response.",
+    ) -> None:
+        super().__init__(message)
+
+
+# --------------------------------------------------------------------------- #
+# Repository file browser (Discovery stage "Repository Files" panel)
+# --------------------------------------------------------------------------- #
+
+
+class RepositoryBrowseError(Exception):
+    """Base class for repository file-browsing failures.
+
+    Carries a stable ``status`` and a clean ``message`` the API layer maps onto
+    ``{ jobId, status, message }``, mirroring the other stage exception groups.
+    """
+
+    status: str = "REPOSITORY_BROWSE_FAILED"
+    http_status: int = 500
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.message = message
+
+
+class RepositoryWorkspaceNotFoundError(RepositoryBrowseError):
+    """No cloned ``original-repo`` for this job — Discovery hasn't run yet."""
+
+    status = "WORKSPACE_NOT_FOUND"
+    http_status = 404
+
+    def __init__(
+        self,
+        message: str = "Repository workspace not found. Please run Discovery first.",
+    ) -> None:
+        super().__init__(message)
+
+
+class RepositoryPathNotFoundError(RepositoryBrowseError):
+    """The requested file/folder path does not exist in the cloned repo."""
+
+    status = "PATH_NOT_FOUND"
+    http_status = 404
+
+    def __init__(
+        self,
+        message: str = "The requested path was not found in the repository.",
+    ) -> None:
+        super().__init__(message)
+
+
+class RepositoryPathInvalidError(RepositoryBrowseError):
+    """The path escapes the workspace, or doesn't match the expected kind (file/dir)."""
+
+    status = "INVALID_PATH"
+    http_status = 400
+
+    def __init__(self, message: str = "Invalid file path.") -> None:
+        super().__init__(message)
+
+
+class RepositoryFileTooLargeError(RepositoryBrowseError):
+    """The file exceeds the preview size limit."""
+
+    status = "FILE_TOO_LARGE"
+    http_status = 413
+
+    def __init__(
+        self,
+        message: str = "File is too large to preview.",
+    ) -> None:
+        super().__init__(message)
+
+
+class RepositoryFileNotTextError(RepositoryBrowseError):
+    """The file is not valid UTF-8 text (binary content)."""
+
+    status = "FILE_NOT_TEXT"
+    http_status = 415
+
+    def __init__(
+        self,
+        message: str = "This file can't be previewed as text.",
+    ) -> None:
+        super().__init__(message)

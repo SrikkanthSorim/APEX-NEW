@@ -64,14 +64,21 @@ class ProjectAnalyzer:
         self._frontend = FrontendDetector()
 
     def analyze(self, root: Path) -> ProjectAnalysis:
-        build_tool = self._build_tool.detect(root)
+        # The Java project may live in a subfolder (e.g. backend/pom.xml) rather
+        # than the repo root. Resolve the actual project directory and analyze
+        # from there; the frontend is still detected across the whole repo.
+        project_root = self._resolve_project_root(root)
 
-        pom_root = self._parse_pom(root / "pom.xml") if build_tool.has_pom_xml else None
-        build_gradle_text = self._read_gradle_build(root)
-        settings_gradle_text = self._read_first(
-            root, "settings.gradle", "settings.gradle.kts"
+        build_tool = self._build_tool.detect(project_root)
+
+        pom_root = (
+            self._parse_pom(project_root / "pom.xml") if build_tool.has_pom_xml else None
         )
-        gradle_properties_text = self._read_first(root, "gradle.properties")
+        build_gradle_text = self._read_gradle_build(project_root)
+        settings_gradle_text = self._read_first(
+            project_root, "settings.gradle", "settings.gradle.kts"
+        )
+        gradle_properties_text = self._read_first(project_root, "gradle.properties")
 
         java_version = self._java_version.detect(
             build_tool.build_tool, pom_root, build_gradle_text, gradle_properties_text
@@ -80,12 +87,14 @@ class ProjectAnalyzer:
         dependencies = self._dependencies.analyze(pom_root, build_gradle_text)
         modules = self._modules.detect(pom_root, settings_gradle_text)
         project_type = self._project_type.detect(
-            root, build_tool.is_supported, spring_boot_version, dependencies
+            project_root, build_tool.is_supported, spring_boot_version, dependencies
         )
+        # Scan the whole repo for a frontend (it commonly sits beside the backend,
+        # e.g. repo/frontend + repo/backend).
         frontend = self._frontend.detect(root)
 
-        has_src_main = file_utils.exists(root, "src", "main")
-        has_src_test = file_utils.exists(root, "src", "test")
+        has_src_main = file_utils.exists(project_root, "src", "main")
+        has_src_test = file_utils.exists(project_root, "src", "test")
 
         return ProjectAnalysis(
             build_tool=build_tool.build_tool,
@@ -101,12 +110,26 @@ class ProjectAnalyzer:
             has_pom_xml=build_tool.has_pom_xml,
             has_build_gradle=build_tool.has_build_gradle,
             has_build_gradle_kts=build_tool.has_build_gradle_kts,
-            has_package_json=(root / "package.json").is_file(),
+            has_package_json=(root / "package.json").is_file() or frontend.detected,
             has_src_main=has_src_main,
             has_src_test=has_src_test,
             has_tests=has_src_test,
-            java_files=file_utils.find_files(root, ".java"),
+            java_files=file_utils.find_files(project_root, ".java"),
         )
+
+    @staticmethod
+    def _resolve_project_root(root: Path) -> Path:
+        """Return the directory that holds the build file.
+
+        Prefers the repo root when it already has a build file; otherwise finds
+        the shallowest subfolder containing a ``pom.xml`` / ``build.gradle`` /
+        ``build.gradle.kts``. Falls back to the repo root when none is found.
+        """
+        build_files = ("pom.xml", "build.gradle", "build.gradle.kts")
+        if any((root / name).is_file() for name in build_files):
+            return root
+        found = file_utils.find_shallowest_dir_with(root, build_files)
+        return found or root
 
     # -- file reading -------------------------------------------------------- #
 
