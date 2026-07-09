@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from app.infrastructure.build.gradle_runner import GradleRewriteRunner
+from app.infrastructure.build.gradle_wrapper_upgrader import GradleWrapperUpgrader
 from app.infrastructure.build.maven_runner import MavenNotAvailableError, MavenRewriteRunner
 from app.infrastructure.migration_engine.internal_rewrite_runner import InternalRewriteRunner
 from app.infrastructure.migration_engine.migration_log_parser import parse_rewrite_output
@@ -40,6 +41,7 @@ class AutomatedMigrationRunner:
         self._gradle = GradleRewriteRunner()
         self._fallback = InternalRewriteRunner()
         self._recipe_mapper = RecipeMapper()
+        self._wrapper_upgrader = GradleWrapperUpgrader()
 
     def run(
         self,
@@ -52,12 +54,24 @@ class AutomatedMigrationRunner:
         project_dir = self._resolve_project_dir(migrated_repo_dir)
         plan = self._recipe_mapper.build_plan(target_java_version, include_jakarta=include_jakarta)
 
+        # An old Gradle wrapper can't run on a newer target JDK (Java 21 needs
+        # Gradle 8.5+), which breaks both rewriteRun and build validation. Bump it
+        # first (text edit, no Gradle invocation) so those steps can launch.
+        wrapper_lines: list[str] = []
+        if build_tool == "GRADLE":
+            wrapper_lines = self._wrapper_upgrader.ensure_compatible(
+                project_dir, _parse_major(target_java_version)
+            )
+            for line in wrapper_lines:
+                logger.info("%s", line)
+
         if not plan.has_recipes:
             return MigrationRunResult(
                 success=True,
                 tool="none",
                 project_dir=project_dir,
-                log_lines=["No applicable OpenRewrite recipes for the selected target."],
+                log_lines=wrapper_lines
+                + ["No applicable OpenRewrite recipes for the selected target."],
             )
 
         logger.info(
@@ -79,6 +93,8 @@ class AutomatedMigrationRunner:
             )
         result.recipes = plan.active_recipes
         result.project_dir = project_dir
+        if wrapper_lines:
+            result.log_lines = wrapper_lines + result.log_lines
 
         # If OpenRewrite failed, try the lightweight fallback so the published
         # repo at least targets the requested Java version.

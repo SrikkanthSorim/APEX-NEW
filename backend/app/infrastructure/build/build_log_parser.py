@@ -4,7 +4,25 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from app.infrastructure.build.gradle_log_hints import add_gradle_hints
+
 _NOISE = ("Downloading from", "Downloaded from", "Progress (", "Uploading")
+
+# Substrings (matched case-insensitively) that mark a line as failure detail.
+# Covers Maven ([ERROR]/BUILD FAILURE) and Gradle, whose real cause lives in the
+# "FAILURE:" / "What went wrong" / "Caused by:" block (e.g. AccessDeniedException
+# / "Could not move temporary workspace" from AV locking the cache).
+_ERROR_TOKENS = (
+    "[ERROR]",
+    "BUILD FAILURE",
+    "BUILD FAILED",
+    "COMPILATION ERROR",
+    "FAILURE:",
+    "WHAT WENT WRONG",
+    "CAUSED BY:",
+    "COULD NOT ",
+    "EXCEPTION",
+)
 
 
 @dataclass(frozen=True)
@@ -24,16 +42,14 @@ def parse_build_output(stdout: str, stderr: str, *, max_lines: int = 300) -> Par
             continue
         lines.append(line)
         upper = line.upper()
-        if (
-            "[ERROR]" in upper
-            or "BUILD FAILURE" in upper
-            or "BUILD FAILED" in upper
-            or "COMPILATION ERROR" in upper
-            or "> TASK :" in upper and "FAILED" in upper
+        if any(token in upper for token in _ERROR_TOKENS) or (
+            "> TASK :" in upper and "FAILED" in upper
         ):
             errors.append(line.strip())
 
     if len(lines) > max_lines:
         lines = lines[: max_lines // 2] + ["... (build log truncated) ..."] + lines[-max_lines // 2 :]
 
+    errors = add_gradle_hints(lines, errors)
     return ParsedBuildLog(lines=lines, error_lines=errors[:50])
+

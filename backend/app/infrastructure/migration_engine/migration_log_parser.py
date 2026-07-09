@@ -4,12 +4,26 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from app.infrastructure.build.gradle_log_hints import add_gradle_hints
+
 # Substrings that mark a line as noise not worth showing in the UI.
 _NOISE = (
     "Downloading from",
     "Downloaded from",
     "Progress (",
     "Uploading",
+)
+
+_ERROR_TOKENS = (
+    "[ERROR]",
+    "BUILD FAILURE",
+    "BUILD FAILED",
+    "FAILURE:",
+    "WHAT WENT WRONG",
+    "CAUSED BY:",
+    "COULD NOT ",
+    "EXCEPTION",
+    "FAILED",
 )
 
 
@@ -33,13 +47,15 @@ def parse_rewrite_output(stdout: str, stderr: str, *, max_lines: int = 400) -> P
             continue
         lines.append(line)
         upper = line.upper()
-        if "[ERROR]" in upper or "BUILD FAILURE" in upper or "FAILED" in upper:
+        if any(token in upper for token in _ERROR_TOKENS):
             errors.append(line.strip())
 
     if len(lines) > max_lines:
-        # Keep the head and tail — the tail usually holds the outcome.
+        # Keep the head and tail - the tail usually holds the outcome.
         head = lines[: max_lines // 2]
         tail = lines[-max_lines // 2 :]
         lines = head + ["... (log truncated) ..."] + tail
 
+    errors = add_gradle_hints(lines, errors)
     return ParsedMigrationLog(lines=lines, error_lines=errors[:50])
+

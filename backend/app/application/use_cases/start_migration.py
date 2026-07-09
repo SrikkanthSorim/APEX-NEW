@@ -147,6 +147,7 @@ class StartMigrationUseCase:
                 paths.migrated_repo_dir, build_tool, target_java, include_jakarta=True
             )
             store.append_logs(result.log_lines + result.error_lines)
+            self._log_migration_error_lines(job_id, result.error_lines)
             store.update(recipes=result.recipes, usedFallback=result.used_fallback)
 
             if not result.success:
@@ -190,6 +191,11 @@ class StartMigrationUseCase:
             logger.exception("Unexpected migration failure for job %s", job_id)
             self._fail(store, job_id, "Migration failed due to an unexpected error.")
 
+    @staticmethod
+    def _log_migration_error_lines(job_id: str, error_lines: list[str]) -> None:
+        for line in error_lines[:10]:
+            logger.warning("Migration tool error for job %s: %s", job_id, line)
+
     # -- build validation ---------------------------------------------------- #
 
     def _validate_build(
@@ -223,7 +229,13 @@ class StartMigrationUseCase:
         elif result.success:
             logger.info("BUILD SUCCESS for job %s (migrated repo compiles)", job_id)
         else:
-            logger.warning("BUILD FAILED for job %s (migrated repo did not build)", job_id)
+            # Surface the actual reason (e.g. AccessDeniedException from AV locking
+            # the Gradle cache) instead of a generic "did not build".
+            detail_lines = result.error_lines[:10] or result.log_lines[-10:]
+            detail = " | ".join(detail_lines) if detail_lines else "no build output captured"
+            logger.warning(
+                "BUILD FAILED for job %s (migrated repo did not build): %s", job_id, detail
+            )
 
     # -- publish per destination mode --------------------------------------- #
 
