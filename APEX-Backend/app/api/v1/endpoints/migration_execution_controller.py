@@ -73,3 +73,11 @@ async def migration_logs(job_id: str) -> JSONResponse:
         return JSONResponse(status_code=200, content=_pipeline.get_logs(job_id))
     except MigrationJobNotFoundError:
         return _not_found_response()
+
+
+@router.get("/migration/{job_id}/fossa", summary="FOSSA dependency/license scan results.")
+async def migration_fossa(job_id: str) -> JSONResponse:
+    try:
+        return JSONResponse(status_code=200, content=_pipeline.get_fossa(job_id))
+    except MigrationJobNotFoundError:
+        return _not_found_response()

@@ -63,15 +63,28 @@ class RepoCreator:
         )
 
         if response.status_code in (200, 201) and isinstance(response.data, dict):
-            data = response.data
-            return CreatedRepo(
-                owner=profile.owner,
-                name=str(data.get("name", repo_name)),
-                html_url=str(data.get("html_url", f"https://{profile.host}/{profile.owner}/{repo_name}")),
-                clone_url=str(data.get("clone_url", f"https://{profile.host}/{profile.owner}/{repo_name}.git")),
-            )
+            return self._created_repo_from_response(profile, repo_name, response.data)
+
+        if response.status_code == 422:
+            existing = self._github.get_repository_sync(profile.owner, repo_name, token)
+            if existing.status_code == 200 and isinstance(existing.data, dict):
+                logger.info("Target repo %s/%s already exists; reusing it.", profile.owner, repo_name)
+                return self._created_repo_from_response(profile, repo_name, existing.data)
 
         raise PushFailedError(self._error_message(response.status_code, response.data))
+
+    @staticmethod
+    def _created_repo_from_response(
+        profile: TargetProfile,
+        repo_name: str,
+        data: dict,
+    ) -> CreatedRepo:
+        return CreatedRepo(
+            owner=profile.owner,
+            name=str(data.get("name", repo_name)),
+            html_url=str(data.get("html_url", f"https://{profile.host}/{profile.owner}/{repo_name}")),
+            clone_url=str(data.get("clone_url", f"https://{profile.host}/{profile.owner}/{repo_name}.git")),
+        )
 
     @staticmethod
     def _error_message(status_code: int, data: dict | None) -> str:

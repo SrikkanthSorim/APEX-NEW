@@ -8,9 +8,15 @@ original (non-versioned) paths so the existing frontend calls
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import github_controller, java_version_controller, local_project_controller
+from app.api.v1.endpoints import (
+    github_controller,
+    java_version_controller,
+    local_project_controller,
+    migration_preview_controller,
+)
 
 utility_router = APIRouter()
 utility_router.include_router(github_controller.router)
 utility_router.include_router(local_project_controller.router)
 utility_router.include_router(java_version_controller.router)
+utility_router.include_router(migration_preview_controller.router)

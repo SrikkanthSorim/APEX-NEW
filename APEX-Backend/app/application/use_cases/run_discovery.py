@@ -143,6 +143,9 @@ class RunDiscoveryUseCase:
             "multiModule": analysis.multi_module,
             "modules": analysis.modules,
             "dependencies": [dep.to_dict() for dep in analysis.dependencies],
+            "buildPlugins": [plugin.to_dict() for plugin in analysis.build_plugins],
+            "bomVersions": [bom.to_dict() for bom in analysis.bom_versions],
+            "frameworks": analysis.frameworks,
             "dependencyCount": analysis.dependency_count,
             "frontend": analysis.frontend.to_dict(),
             "detectedFiles": {
@@ -184,6 +187,9 @@ class RunDiscoveryUseCase:
                 "frontendType": analysis.frontend.type if analysis.frontend.detected else None,
                 # --- extra fields consumed by the existing frontend UI ---
                 "dependencies": [dep.to_dict() for dep in analysis.dependencies],
+                "buildPlugins": [plugin.to_dict() for plugin in analysis.build_plugins],
+                "bomVersions": [bom.to_dict() for bom in analysis.bom_versions],
+                "frameworks": analysis.frameworks,
                 "hasTests": analysis.has_tests,
                 "javaFileCount": len(analysis.java_files),
                 "defaultBranch": "main",

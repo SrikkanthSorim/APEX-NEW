@@ -161,6 +161,34 @@ def count_changed_files(original: Path, migrated: Path) -> int:
     return changed
 
 
+def diff_relative_files(original: Path, migrated: Path) -> tuple[list[str], list[str], list[str]]:
+    """Return ``(added, removed, modified)`` repo-relative paths, each sorted.
+
+    ``added`` exists only under ``migrated``, ``removed`` only under
+    ``original``; ``modified`` exists in both but differs in content.
+    """
+    original_files = _relative_files(original)
+    migrated_files = _relative_files(migrated)
+
+    added: list[str] = []
+    removed: list[str] = []
+    modified: list[str] = []
+    for rel in sorted(set(original_files) | set(migrated_files)):
+        a = original_files.get(rel)
+        b = migrated_files.get(rel)
+        if a is None:
+            added.append(rel)
+        elif b is None:
+            removed.append(rel)
+        else:
+            try:
+                if a.read_bytes() != b.read_bytes():
+                    modified.append(rel)
+            except OSError:
+                modified.append(rel)
+    return added, removed, modified
+
+
 def copy_tree(src: Path, dst: Path, *, exclude: set[str] | None = None) -> None:
     """Copy the ``src`` directory tree to ``dst`` (created fresh).
 

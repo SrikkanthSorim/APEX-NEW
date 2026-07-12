@@ -226,6 +226,20 @@ export interface MigrationResult {
   errors_fixed: number;
   warnings_fixed: number;
   dependency_count?: number;
+  // --- migration engine report fields (OpenRewrite recipe selection, dependency/import changes) ---
+  recipes_executed?: string[];
+  recipe_selection_reasons?: string[];
+  build_modernization?: string[];
+  dependency_upgrades?: Array<{ coordinate: string; oldVersion: string | null; newVersion: string }>;
+  used_fallback?: boolean;
+  already_compatible?: boolean;
+  build_status?: string | null;
+  build_success?: boolean | null;
+  migration_summary?: string;
+  modified_files?: string[];
+  import_changes?: Array<{ file: string; added: string[]; removed: string[] }>;
+  source_changes?: Array<{ file: string; linesChanged: number }>;
+  retry_attempts?: Array<{ attempt: number; rootCause: string; recipesAdded: string[]; buildStatus: string }>;
 }
 
 export interface MigrationJobSummary {
@@ -283,6 +297,17 @@ export interface MigrationJobSummary {
   has_fossa_report: boolean;
   has_testcase_doc: boolean;
   has_clone_path: boolean;
+  // --- migration engine report fields ---
+  recipes_executed?: string[];
+  recipe_selection_reasons?: string[];
+  build_modernization?: string[];
+  dependency_upgrades?: Array<{ coordinate: string; oldVersion: string | null; newVersion: string }>;
+  used_fallback?: boolean;
+  already_compatible?: boolean;
+  build_status?: string | null;
+  build_success?: boolean | null;
+  migration_summary?: string;
+  retry_attempts?: Array<{ attempt: number; rootCause: string; recipesAdded: string[]; buildStatus: string }>;
 }
 
 // Start migration
@@ -323,7 +348,7 @@ export async function getMigrationFossa(jobId: string): Promise<{
   fossa: FossaScanResult;
 }> {
   const data = await requestJson<{ fossa?: FossaScanResult } | FossaScanResult>(
-    `/migration/${jobId}/fossa`,
+    `/v1/migration/${jobId}/fossa`,
     "Failed to get FOSSA results"
   );
   return {

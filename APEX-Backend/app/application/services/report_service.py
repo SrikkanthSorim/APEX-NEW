@@ -21,6 +21,11 @@ def _core(report: dict[str, Any]) -> dict[str, Any]:
         "target_repo": report.get("targetRepo"),
         "source_java_version": str(report.get("sourceJavaVersion") or ""),
         "target_java_version": str(report.get("targetJavaVersion") or ""),
+        "effective_target_java_version": str(
+            report.get("effectiveTargetJavaVersion")
+            or report.get("targetJavaVersion")
+            or ""
+        ),
         "conversion_types": report.get("conversionTypes") or [],
         "started_at": report.get("startedAt") or "",
         "worker_started_at": report.get("startedAt"),
@@ -30,6 +35,17 @@ def _core(report: dict[str, Any]) -> dict[str, Any]:
         "files_modified": int(report.get("filesModified") or 0),
         "error_message": report.get("errorMessage"),
         "dependency_count": int(report.get("dependencyCount") or 0),
+        # --- migration engine report fields ---
+        "recipes_executed": report.get("recipes") or [],
+        "recipe_selection_reasons": report.get("recipeSelection") or [],
+        "build_modernization": report.get("buildModernization") or [],
+        "dependency_upgrades": report.get("dependencyUpgrades") or [],
+        "used_fallback": bool(report.get("usedFallback")),
+        "already_compatible": bool(report.get("alreadyCompatible")),
+        "build_status": report.get("buildStatus"),
+        "build_success": report.get("buildSuccess"),
+        "migration_summary": report.get("migrationSummary") or "",
+        "retry_attempts": report.get("retryAttempts") or [],
     }
 
 
@@ -68,20 +84,29 @@ _ZERO_ANALYSIS = {
 }
 
 
+def _analysis(report: dict[str, Any]) -> dict[str, Any]:
+    """Overlay produced analysis fields on top of stable UI defaults."""
+    values = dict(_ZERO_ANALYSIS)
+    for key in values:
+        if key in report:
+            values[key] = report.get(key)
+    return values
+
+
 def build_summary(report: dict[str, Any]) -> dict[str, Any]:
     """Shape a `MigrationJobSummary`."""
     core = _core(report)
     log_lines = report.get("logLines") or []
     return {
         **core,
-        **_ZERO_ANALYSIS,
+        **_analysis(report),
         "api_endpoint_count": 0,
         "issue_count": 0,
         "log_entry_count": len(log_lines),
         "file_diff_count": 0,
         "has_test_pipeline": False,
-        "has_sonar_report": False,
-        "has_fossa_report": False,
+        "has_sonar_report": bool(report.get("sonar_report")),
+        "has_fossa_report": bool(report.get("fossa_report")),
         "has_testcase_doc": False,
         "has_clone_path": True,
     }
@@ -93,7 +118,7 @@ def build_result(report: dict[str, Any]) -> dict[str, Any]:
     log_lines = report.get("logLines") or []
     return {
         **core,
-        **_ZERO_ANALYSIS,
+        **_analysis(report),
         "dependencies": [],
         "migration_log": log_lines,
         "issues": [],
@@ -101,9 +126,13 @@ def build_result(report: dict[str, Any]) -> dict[str, Any]:
         "test_insights": [],
         "test_summary": None,
         "test_llm_model": None,
-        "sonar_report": None,
-        "fossa_report": None,
+        "sonar_report": report.get("sonar_report"),
+        "fossa_report": report.get("fossa_report"),
         "test_pipeline": None,
+        # --- full migration report detail ---
+        "modified_files": report.get("modifiedFiles") or [],
+        "import_changes": report.get("importChanges") or [],
+        "source_changes": report.get("sourceChanges") or [],
     }
 
 
@@ -112,4 +141,12 @@ def build_logs(report: dict[str, Any]) -> dict[str, Any]:
     return {
         "job_id": report.get("jobId", ""),
         "logs": report.get("logLines") or [],
+    }
+
+
+def build_fossa(report: dict[str, Any]) -> dict[str, Any]:
+    """Shape the `/fossa` response."""
+    return {
+        "job_id": report.get("jobId", ""),
+        "fossa": report.get("fossa_report"),
     }

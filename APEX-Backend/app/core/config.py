@@ -65,14 +65,21 @@ class Settings(BaseSettings):
 
     # --- Migration / OpenRewrite --------------------------------------------
     # Pinned OpenRewrite plugin + recipe versions (reproducible migrations).
-    openrewrite_maven_plugin_version: str = "5.44.0"
-    openrewrite_gradle_plugin_version: str = "6.29.0"
-    rewrite_migrate_java_version: str = "2.29.0"
+    openrewrite_maven_plugin_version: str = "6.43.0"
+    openrewrite_gradle_plugin_version: str = "7.36.0"
+    rewrite_migrate_java_version: str = "3.39.0"
+    rewrite_spring_version: str = "6.34.0"
+    rewrite_java_dependencies_version: str = "1.57.0"
+    rewrite_testing_frameworks_version: str = "3.41.0"
+    openrewrite_recipe_catalog_path: Path = BACKEND_ROOT / "app" / "config" / "openrewrite_recipe_catalog.json"
     # Timeout (seconds) for a single OpenRewrite run (Maven/Gradle).
     migration_timeout_seconds: float = 1800.0
     # Identity used for the migrated-repo commit.
     migration_commit_author_name: str = "Java APEX Migration Bot"
     migration_commit_author_email: str = "migration-bot@javaapex.local"
+    # Bounded diagnose-and-retry loop when the post-migration build fails
+    # (see build_failure_diagnostician.py). 0 disables retries.
+    migration_max_retry_attempts: int = 2
 
     # --- Build validation (post-migration "does it build?" check) -----------
     # Whether to compile/package the migrated code and log BUILD SUCCESS/FAILED.
@@ -80,6 +87,9 @@ class Settings(BaseSettings):
     # Local JDK used by Maven/Gradle subprocesses. Leave empty to inherit the
     # server environment's JAVA_HOME/PATH.
     build_java_home: str = ""
+    # Local Gradle install used when a Gradle project has no Windows wrapper
+    # and the backend process PATH does not include gradle.bat.
+    gradle_home: str = ""
     # Maven goals: build everything but skip running tests.
     build_maven_args: str = "-B,-DskipTests,package"
     # Gradle tasks: build but skip tests.
@@ -94,6 +104,25 @@ class Settings(BaseSettings):
     @property
     def build_gradle_args_list(self) -> list[str]:
         return [a for a in self.build_gradle_args.split(",") if a]
+
+    # --- Quality Gates -------------------------------------------------------
+    # SonarQube/SonarCloud token. Required only when the SonarQube quality gate
+    # card is active.
+    sonarqube_token: str = Field(default="", alias="SONAR_TOKEN")
+    # SonarQube server URL. For SonarCloud use https://sonarcloud.io.
+    sonarqube_host_url: str = Field(default="http://localhost:9000", alias="SONAR_HOST_URL")
+    # Optional fixed project key. Leave empty to derive one from the migration job.
+    sonarqube_project_key: str = Field(default="", alias="SONAR_PROJECT_KEY")
+    # Required by SonarCloud; leave empty for local SonarQube.
+    sonarqube_organization: str = Field(default="", alias="SONAR_ORGANIZATION")
+    sonarqube_project_key_prefix: str = "java-apex"
+    sonarqube_scanner_command: str = "sonar-scanner"
+
+    # FOSSA API key. Required only when the FOSSA quality gate card is active.
+    fossa_api_key: str = Field(default="", alias="FOSSA_API_KEY")
+    # Optional custom FOSSA endpoint for self-hosted/enterprise setups.
+    fossa_endpoint: str = Field(default="", alias="FOSSA_ENDPOINT")
+    fossa_cli_command: str = "fossa"
 
     # --- Storage -------------------------------------------------------------
     # Root folder where per-job artifacts (reports, etc.) are written.

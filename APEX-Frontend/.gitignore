@@ -145,4 +145,7 @@ Thumbs.db
 .yarn/install-state.gz
 .pnp.*
 .git_disabled/
+
 .claude/
+.agents/
+.github/

@@ -98,6 +98,29 @@ class GithubClient:
             return None
         return data.get("type") if isinstance(data, dict) else None
 
+    def get_repository_sync(
+        self,
+        owner: str,
+        repo: str,
+        token: str | None = None,
+    ) -> GithubRepoResponse:
+        """Fetch repository metadata from a background thread."""
+        url = f"{self._base_url}/repos/{owner}/{repo}"
+        try:
+            with httpx.Client(timeout=self._timeout) as client:
+                response = client.get(url, headers=self._headers(token))
+        except httpx.HTTPError as exc:
+            raise GithubServiceError() from exc
+
+        data: dict[str, Any] | None = None
+        try:
+            parsed = response.json()
+            if isinstance(parsed, dict):
+                data = parsed
+        except ValueError:
+            data = None
+        return GithubRepoResponse(status_code=response.status_code, data=data)
+
     def create_repository_sync(
         self,
         owner: str,

@@ -31,6 +31,7 @@ class MigrationStep(str, Enum):
     PREPARING = "Preparing workspace"
     MIGRATING = "Running OpenRewrite"
     VALIDATING = "Validating build"
+    QUALITY_GATES = "Running quality gates"
     PUBLISHING = "Publishing to GitHub"
     COMPLETED = "Migration completed"
     FAILED = "Migration failed"

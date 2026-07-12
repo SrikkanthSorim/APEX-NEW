@@ -13,10 +13,19 @@ _NOISE = (
 )
 
 
+# Printed by the Maven/Gradle OpenRewrite plugin once it actually starts
+# applying recipes. Its absence on a failed run means the build tool failed
+# while evaluating/compiling the project itself (a project-level build
+# configuration or plugin incompatibility) -- before any recipe ran, so no
+# recipe selection could have prevented or fixed it.
+_RECIPE_EXECUTION_MARKERS = ("using active recipe", ":rewriterun")
+
+
 @dataclass(frozen=True)
 class ParsedMigrationLog:
     lines: list[str] = field(default_factory=list)
     error_lines: list[str] = field(default_factory=list)
+    reached_recipe_execution: bool = False
 
 
 def parse_rewrite_output(stdout: str, stderr: str, *, max_lines: int = 400) -> ParsedMigrationLog:
@@ -24,6 +33,7 @@ def parse_rewrite_output(stdout: str, stderr: str, *, max_lines: int = 400) -> P
     combined = (stdout or "") + ("\n" + stderr if stderr else "")
     lines: list[str] = []
     errors: list[str] = []
+    reached_recipe_execution = False
 
     for raw in combined.splitlines():
         line = raw.rstrip()
@@ -32,6 +42,9 @@ def parse_rewrite_output(stdout: str, stderr: str, *, max_lines: int = 400) -> P
         if any(token in line for token in _NOISE):
             continue
         lines.append(line)
+        lowered = line.lower()
+        if any(marker in lowered for marker in _RECIPE_EXECUTION_MARKERS):
+            reached_recipe_execution = True
         upper = line.upper()
         if "[ERROR]" in upper or "BUILD FAILURE" in upper or "FAILED" in upper:
             errors.append(line.strip())
@@ -42,4 +55,6 @@ def parse_rewrite_output(stdout: str, stderr: str, *, max_lines: int = 400) -> P
         tail = lines[-max_lines // 2 :]
         lines = head + ["... (log truncated) ..."] + tail
 
-    return ParsedMigrationLog(lines=lines, error_lines=errors[:50])
+    return ParsedMigrationLog(
+        lines=lines, error_lines=errors[:50], reached_recipe_execution=reached_recipe_execution
+    )

@@ -11,6 +11,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from xml.etree.ElementTree import Element, ParseError, fromstring
 
+from app.infrastructure.analyzers.build_metadata_analyzer import (
+    BomVersion,
+    BuildMetadataAnalyzer,
+    BuildPlugin,
+)
 from app.infrastructure.analyzers.build_tool_detector import BuildToolDetector
 from app.infrastructure.analyzers.dependency_analyzer import Dependency, DependencyAnalyzer
 from app.infrastructure.analyzers.frontend_detector import FrontendDetector, FrontendResult
@@ -32,6 +37,9 @@ class ProjectAnalysis:
     multi_module: bool
     modules: list[str]
     dependencies: list[Dependency]
+    build_plugins: list[BuildPlugin]
+    bom_versions: list[BomVersion]
+    frameworks: list[str]
     frontend: FrontendResult
     has_pom_xml: bool
     has_build_gradle: bool
@@ -59,6 +67,7 @@ class ProjectAnalyzer:
         self._java_version = JavaVersionDetector()
         self._spring_boot = SpringBootDetector()
         self._dependencies = DependencyAnalyzer()
+        self._metadata = BuildMetadataAnalyzer()
         self._modules = ModuleDetector()
         self._project_type = ProjectTypeDetector()
         self._frontend = FrontendDetector()
@@ -85,6 +94,13 @@ class ProjectAnalyzer:
         )
         spring_boot_version = self._spring_boot.detect(pom_root, build_gradle_text)
         dependencies = self._dependencies.analyze(pom_root, build_gradle_text)
+        build_plugins = self._metadata.detect_plugins(pom_root, build_gradle_text)
+        bom_versions = self._metadata.detect_boms(pom_root, build_gradle_text)
+        frameworks = self._metadata.detect_frameworks(
+            spring_boot_version=spring_boot_version,
+            dependencies=dependencies,
+            build_gradle_text=build_gradle_text,
+        )
         modules = self._modules.detect(pom_root, settings_gradle_text)
         project_type = self._project_type.detect(
             project_root, build_tool.is_supported, spring_boot_version, dependencies
@@ -106,6 +122,9 @@ class ProjectAnalyzer:
             multi_module=modules.multi_module,
             modules=modules.modules,
             dependencies=dependencies,
+            build_plugins=build_plugins,
+            bom_versions=bom_versions,
+            frameworks=frameworks,
             frontend=frontend,
             has_pom_xml=build_tool.has_pom_xml,
             has_build_gradle=build_tool.has_build_gradle,

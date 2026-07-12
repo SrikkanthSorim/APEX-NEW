@@ -27,6 +27,7 @@ class RepoPusher:
         *,
         commit_message: str,
         branch: str = "main",
+        allow_force_update_existing: bool = False,
     ) -> str:
         """Init, commit, and push ``repo_dir`` to ``clone_url``. Returns the branch."""
         token = (settings.github_target_token or "").strip()
@@ -43,22 +44,54 @@ class RepoPusher:
         self._git(repo_dir, ["commit", "-q", "-m", commit_message])
         self._git(repo_dir, ["remote", "add", "origin", auth_url], sensitive=True)
         logger.info("Pushing migrated repo to %s", self._mask(clone_url))
-        self._git(repo_dir, ["push", "-u", "origin", branch], sensitive=True)
+        push_result = self._run_git(repo_dir, ["push", "-u", "origin", branch])
+        if push_result.succeeded:
+            return branch
+
+        if allow_force_update_existing and self._is_non_fast_forward(push_result.stderr):
+            logger.warning(
+                "Remote %s already has %s; retrying with --force-with-lease.",
+                self._mask(clone_url),
+                branch,
+            )
+            self._run_git(
+                repo_dir,
+                ["fetch", "origin", f"{branch}:refs/remotes/origin/{branch}", "--depth=1"],
+            )
+            force_result = self._run_git(
+                repo_dir,
+                ["push", "--force-with-lease", "-u", "origin", branch],
+            )
+            if force_result.succeeded:
+                return branch
+            self._raise_git_failure(force_result, action="push")
+
+        self._raise_git_failure(push_result, action="push")
         return branch
 
     # -- helpers ------------------------------------------------------------- #
 
     def _git(self, cwd: Path, args: list[str], *, sensitive: bool = False) -> CommandResult:
-        git = resolve_executable("git") or "git"
-        result = run_command([git, *args], cwd=cwd, timeout=settings.git_clone_timeout_seconds)
+        result = self._run_git(cwd, args)
         if not result.succeeded:
-            stderr = self._mask(result.stderr.strip())
-            action = "push" if sensitive else " ".join(args[:1])
-            logger.warning("git %s failed: %s", action, stderr)
-            raise PushFailedError(
-                "Failed to publish the migrated repository. Check the target token/permissions."
-            )
+            self._raise_git_failure(result, action="push" if sensitive else " ".join(args[:1]))
         return result
+
+    def _run_git(self, cwd: Path, args: list[str]) -> CommandResult:
+        git = resolve_executable("git") or "git"
+        return run_command([git, *args], cwd=cwd, timeout=settings.git_clone_timeout_seconds)
+
+    def _raise_git_failure(self, result: CommandResult, *, action: str) -> None:
+        stderr = self._mask(result.stderr.strip())
+        logger.warning("git %s failed: %s", action, stderr)
+        raise PushFailedError(
+            "Failed to publish the migrated repository. Check the target token/permissions."
+        )
+
+    @staticmethod
+    def _is_non_fast_forward(stderr: str) -> bool:
+        lowered = (stderr or "").lower()
+        return "fetch first" in lowered or "non-fast-forward" in lowered or "[rejected]" in lowered
 
     @staticmethod
     def _build_auth_url(https_url: str, token: str) -> str:
