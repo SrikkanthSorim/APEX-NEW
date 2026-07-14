@@ -1,6 +1,6 @@
 """Start Migration use case.
 
-Runs OpenRewrite on a copy of the cloned repo,
+Runs Migration on a copy of the cloned repo,
 then publishes the result to the configured destination (a new repo under
 Javaapex by default). Long-running; driven in a background thread by the
 pipeline. All state is persisted to ``migration-report.json`` for polling.
@@ -156,7 +156,7 @@ class StartMigrationUseCase:
             )
             WorkspaceManager(paths).prepare_migrated_repo()
 
-            # --- Run OpenRewrite (selected migration recipes), diagnosing and
+            # --- Run Migration (selected migration recipes), diagnosing and
             #     retrying with additional recipes if the build fails ---
             progress_service.set_phase(
                 store, status=MigrationStatus.RUNNING.value,
@@ -249,9 +249,9 @@ class StartMigrationUseCase:
         report: dict[str, Any],
         conversion_types: list[str],
     ) -> tuple[MigrationRunResult, BuildResult | None, list[dict[str, Any]]]:
-        """Run OpenRewrite, validate the build, and -- if it fails -- diagnose
-        the root cause and retry with additional OpenRewrite recipes, or (for
-        a Gradle project that crashed before OpenRewrite could even run) a
+        """Run Migration, validate the build, and -- if it fails -- diagnose
+        the root cause and retry with additional Migration recipes, or (for
+        a Gradle project that crashed before Migration could even run) a
         same-coordinate buildscript version repair.
 
         Bounded by ``settings.migration_max_retry_attempts``. Every attempt
@@ -270,7 +270,7 @@ class StartMigrationUseCase:
         # Each attempt's MigrationRunResult only reflects what changed *in
         # that attempt* (recipe_mapper re-analyzes the already-modified repo
         # each time); accumulate across attempts so the final report/summary
-        # reflects everything OpenRewrite did over the whole retry loop.
+        # reflects everything Migration did over the whole retry loop.
         cumulative_recipes: list[str] = []
         cumulative_dependency_upgrades: list[dict] = []
 
@@ -300,7 +300,7 @@ class StartMigrationUseCase:
                     and attempt < max_attempts
                 ):
                     # Gradle crashed evaluating the project itself, before
-                    # OpenRewrite could run -- try a same-coordinate,
+                    # Migration could run -- try a same-coordinate,
                     # dynamically-resolved classpath/plugin version repair
                     # (see GradleBuildscriptRepair) and, if one was found and
                     # applied, retry from scratch.
@@ -312,7 +312,7 @@ class StartMigrationUseCase:
                         retry_attempts.append({
                             "attempt": attempt + 1,
                             "rootCause": (
-                                "Gradle failed evaluating the project before OpenRewrite "
+                                "Gradle failed evaluating the project before Migration "
                                 f"could run (implicated: {repair.coordinate} {repair.old_version})."
                             ),
                             "recipesAdded": [
@@ -340,7 +340,7 @@ class StartMigrationUseCase:
             ]
             if not new_recipes:
                 store.append_logs(
-                    ["Build failed and no additional OpenRewrite recipe could be "
+                    ["Build failed and no additional Migration recipe could be "
                      "identified automatically from the build output."]
                 )
                 break
@@ -349,7 +349,7 @@ class StartMigrationUseCase:
             recipes_added = [recipe_entry_name(entry) for entry, _artifact, _reason in new_recipes]
             store.append_logs([
                 f"Build failed (attempt {attempt + 1}). Root cause analysis: {root_cause}",
-                f"Retrying with additional OpenRewrite recipe(s): {', '.join(recipes_added)}",
+                f"Retrying with additional Migration recipe(s): {', '.join(recipes_added)}",
             ])
             retry_attempts.append({
                 "attempt": attempt + 1,
@@ -421,7 +421,7 @@ class StartMigrationUseCase:
             parts.append(
                 f"The build failed after the first pass and was automatically "
                 f"retried {len(retry_attempts)} time(s) with additional "
-                f"OpenRewrite recipes based on root-cause analysis of the build "
+                f"Migration recipes based on root-cause analysis of the build "
                 f"output ({causes})."
             )
 
@@ -432,11 +432,11 @@ class StartMigrationUseCase:
             )
         elif result.recipes:
             parts.append(
-                f"Executed {len(result.recipes)} OpenRewrite recipe(s): {', '.join(result.recipes)}."
+                f"Executed {len(result.recipes)} Migration recipe(s): {', '.join(result.recipes)}."
             )
         elif result.used_fallback:
             parts.append(
-                "Applied deterministic build-configuration fallback (OpenRewrite did not run)."
+                "Applied deterministic build-configuration fallback (Migration did not run)."
             )
 
         if result.dependency_upgrades:
@@ -556,7 +556,7 @@ class StartMigrationUseCase:
     ) -> str:
         destination = report.get("destination") or {}
         mode = destination.get("mode", MODE_CREATE_NEW_REPO)
-        commit_message = f"Migrate to Java {target_java} via OpenRewrite"
+        commit_message = f"Migrate to Java {target_java}"
 
         if mode == MODE_LOCAL_FOLDER:
             store.append_logs(["Local destination: migrated code left in the workspace."])
@@ -605,13 +605,13 @@ class StartMigrationUseCase:
     def _describe_migration_failure(result: MigrationRunResult) -> str:
         if result.tool_unavailable:
             return (
-                f"OpenRewrite could not run: {result.tool.title()} tooling was "
+                f"Migration could not run: {result.tool.title()} tooling was "
                 "not found in this environment."
             )
         if result.pre_recipe_failure:
             return (
                 f"{result.tool.title()} failed while evaluating/compiling the "
-                "project itself, before any OpenRewrite recipe ran. This is a "
+                "project itself, before any Migration recipe ran. This is a "
                 "project-level build configuration or plugin incompatibility "
                 "(see the logs for the specific build error), not something a "
                 "migration recipe can fix automatically -- it typically "
@@ -619,7 +619,7 @@ class StartMigrationUseCase:
                 "removing or upgrading an incompatible plugin/dependency) "
                 "before automated migration can proceed."
             )
-        return "OpenRewrite migration failed. See logs for details."
+        return "Migration failed. See logs for details."
 
     @staticmethod
     def _fail(store: MigrationReportStore, job_id: str, message: str) -> None:

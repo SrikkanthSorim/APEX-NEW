@@ -151,6 +151,50 @@ def build_compatible_java_target(target_java_version: str | None) -> tuple[str |
     return str(requested), None
 
 
+def gradle_runtime_major(project_dir: Path, target_major: int | None) -> int | None:
+    """Cap ``target_major`` to the highest JDK the project's Gradle wrapper can run under.
+
+    Old Gradle versions crash outright (rather than merely failing to compile)
+    when launched on a JDK newer than they support -- e.g. Gradle 7.x's
+    bundled ASM can't parse Java 21 class files, so it fails during its own
+    build-script analysis before the project's source is even touched. Both
+    the OpenRewrite run and the post-migration build validation must launch
+    Gradle under a JDK the wrapper's own version actually supports.
+    """
+    version = _gradle_wrapper_version(project_dir)
+    if version is None:
+        return target_major
+
+    max_runtime = _max_supported_java_for_gradle(version)
+    if max_runtime is None:
+        return target_major
+    if target_major is None:
+        return max_runtime
+    return min(target_major, max_runtime)
+
+
+def _gradle_wrapper_version(project_dir: Path) -> tuple[int, int] | None:
+    properties = project_dir / "gradle" / "wrapper" / "gradle-wrapper.properties"
+    if not properties.is_file():
+        return None
+    text = properties.read_text(encoding="utf-8", errors="ignore")
+    match = re.search(r"gradle-(\d+)\.(\d+)(?:[.\-][^/\\]+)?-(?:bin|all)\.zip", text)
+    if not match:
+        return None
+    return int(match.group(1)), int(match.group(2))
+
+
+def _max_supported_java_for_gradle(version: tuple[int, int]) -> int | None:
+    major, minor = version
+    if major < 5:
+        return 8
+    if major < 7 or (major == 7 and minor < 3):
+        return 11
+    if major < 8 or (major == 8 and minor < 5):
+        return 17
+    return None
+
+
 def max_available_java_major() -> int | None:
     """Highest Java major version available from any discovered/configured JDK."""
     candidates = list(_discover_jdks())

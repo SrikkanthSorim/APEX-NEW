@@ -8,7 +8,26 @@ from __future__ import annotations
 
 import shutil
 import stat
+import sys
 from pathlib import Path
+
+
+def _long_path(path: Path) -> Path:
+    """Return an extended-length form of ``path`` on Windows.
+
+    The ``\\\\?\\`` prefix tells the Win32 API to bypass the classic 260-character
+    ``MAX_PATH`` limit. Without it, copying/deleting deeply nested trees (e.g. a
+    cloned repo's resources) can fail with ``WinError 3`` even though the path is
+    otherwise valid. No-op on non-Windows platforms.
+    """
+    if sys.platform != "win32":
+        return path
+    resolved = str(path.resolve())
+    if resolved.startswith("\\\\?\\"):
+        return path
+    if resolved.startswith("\\\\"):
+        return Path("\\\\?\\UNC\\" + resolved.lstrip("\\"))
+    return Path("\\\\?\\" + resolved)
 
 
 def read_text(path: Path) -> str:
@@ -119,7 +138,8 @@ def remove_tree(path: Path) -> None:
 
     Handles Windows read-only files (common inside ``.git``) via an onerror hook.
     """
-    if not path.exists():
+    long_path = _long_path(path)
+    if not long_path.exists():
         return
 
     def _on_error(func, target, _exc_info):  # pragma: no cover - platform specific
@@ -129,7 +149,7 @@ def remove_tree(path: Path) -> None:
         except OSError:
             pass
 
-    shutil.rmtree(path, onerror=_on_error)
+    shutil.rmtree(long_path, onerror=_on_error)
 
 
 def _relative_files(root: Path) -> dict[str, Path]:
@@ -201,4 +221,4 @@ def copy_tree(src: Path, dst: Path, *, exclude: set[str] | None = None) -> None:
     def _ignore(_dir: str, names: list[str]) -> set[str]:
         return {name for name in names if name in exclude}
 
-    shutil.copytree(src, dst, ignore=_ignore)
+    shutil.copytree(_long_path(src), _long_path(dst), ignore=_ignore)

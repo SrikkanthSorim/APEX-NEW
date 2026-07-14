@@ -36,6 +36,13 @@ class GitCommandRunner:
 
         command = [
             "git",
+            # Scoped (not global) so it only affects this clone; needed on
+            # Windows where some repos (e.g. apache/struts) have paths
+            # longer than the default 260-char MAX_PATH, which otherwise
+            # fails checkout with "Filename too long" after the clone
+            # itself has already succeeded.
+            "-c",
+            "core.longpaths=true",
             "clone",
             "--depth",
             str(depth),

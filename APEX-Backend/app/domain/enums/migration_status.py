@@ -29,7 +29,7 @@ class MigrationStep(str, Enum):
 
     QUEUED = "Queued"
     PREPARING = "Preparing workspace"
-    MIGRATING = "Running OpenRewrite"
+    MIGRATING = "Executing Migration"
     VALIDATING = "Validating build"
     QUALITY_GATES = "Running quality gates"
     PUBLISHING = "Publishing to GitHub"

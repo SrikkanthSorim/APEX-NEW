@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.domain.models.build_result import BuildResult
 from app.infrastructure.java_runtime import (
     build_tool_env,
+    gradle_runtime_major,
     max_available_java_major,
     resolve_gradle_executable,
 )
@@ -81,9 +82,14 @@ class BuildValidator:
             return BuildResult(success=False, tool="gradle",
                                error_lines=["Gradle (wrapper or system) was not found."])
         command = [gradle, *settings.build_gradle_args_list]
+        # Cap the JDK to what the (possibly OpenRewrite-upgraded) wrapper's own
+        # Gradle version supports -- an old Gradle launched under a too-new
+        # JDK crashes during its own build-script analysis (e.g. "Unsupported
+        # class file major version") before the project's code ever compiles.
+        runtime_major = gradle_runtime_major(project_dir, target_major)
         result = run_command(
             command, cwd=project_dir, timeout=settings.build_timeout_seconds,
-            env=self._gradle_build_env(project_dir, target_major),
+            env=self._gradle_build_env(project_dir, runtime_major),
         )
         parsed = parse_build_output(result.stdout, result.stderr)
         return BuildResult(

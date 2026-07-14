@@ -15,13 +15,12 @@ with the project's Gradle version, the run fails and is reported as such.
 from __future__ import annotations
 
 import os
-import re
 import shutil
 import uuid
 from pathlib import Path
 
 from app.core.config import settings
-from app.infrastructure.java_runtime import build_tool_env, resolve_gradle_executable
+from app.infrastructure.java_runtime import build_tool_env, gradle_runtime_major, resolve_gradle_executable
 from app.infrastructure.migration_engine.recipe_mapper import RecipePlan
 from app.shared.command_runner import CommandResult, run_command
 
@@ -111,7 +110,7 @@ class GradleRewriteRunner:
         return resolve_gradle_executable(project_dir)
 
     def _build_env(self, project_dir: Path, target_major: int | None) -> dict[str, str]:
-        runtime_major = self._gradle_runtime_major(project_dir, target_major)
+        runtime_major = gradle_runtime_major(project_dir, target_major)
         env = build_tool_env(runtime_major)
 
         # Keep Gradle/OpenRewrite caches out of the user's home directory and
@@ -145,40 +144,6 @@ class GradleRewriteRunner:
             else existing_tool_options
         )
         return env
-
-    def _gradle_runtime_major(self, project_dir: Path, target_major: int | None) -> int | None:
-        version = self._wrapper_version(project_dir)
-        if version is None:
-            return target_major
-
-        max_runtime = self._max_supported_java_for_gradle(version)
-        if max_runtime is None:
-            return target_major
-        if target_major is None:
-            return max_runtime
-        return min(target_major, max_runtime)
-
-    @staticmethod
-    def _wrapper_version(project_dir: Path) -> tuple[int, int] | None:
-        properties = project_dir / "gradle" / "wrapper" / "gradle-wrapper.properties"
-        if not properties.is_file():
-            return None
-        text = properties.read_text(encoding="utf-8", errors="ignore")
-        match = re.search(r"gradle-(\d+)\.(\d+)(?:[.\-][^/\\]+)?-(?:bin|all)\.zip", text)
-        if not match:
-            return None
-        return int(match.group(1)), int(match.group(2))
-
-    @staticmethod
-    def _max_supported_java_for_gradle(version: tuple[int, int]) -> int | None:
-        major, minor = version
-        if major < 5:
-            return 8
-        if major < 7 or (major == 7 and minor < 3):
-            return 11
-        if major < 8 or (major == 8 and minor < 5):
-            return 17
-        return None
 
     def _write_init_script(self, project_dir: Path, plan: RecipePlan, config_path: Path, run_id: str) -> Path:
         artifacts = "\n".join(
