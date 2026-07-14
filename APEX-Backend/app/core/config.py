@@ -90,8 +90,11 @@ class Settings(BaseSettings):
     # Local Gradle install used when a Gradle project has no Windows wrapper
     # and the backend process PATH does not include gradle.bat.
     gradle_home: str = ""
-    # Maven goals: build everything but skip running tests.
-    build_maven_args: str = "-B,-DskipTests,package"
+    # Maven goals: package the migrated app without compiling/running tests.
+    # Some legacy projects keep Groovy/Spock/JUnit test toolchains that are not
+    # Java-target compatible after migration; those should not block the basic
+    # "does the migrated application package?" validation.
+    build_maven_args: str = "-B,-Dmaven.test.skip=true,package"
     # Gradle tasks: build but skip tests.
     build_gradle_args: str = "build,-x,test,--no-daemon"
     # Timeout (seconds) for the build.
@@ -127,6 +130,30 @@ class Settings(BaseSettings):
     # --- Storage -------------------------------------------------------------
     # Root folder where per-job artifacts (reports, etc.) are written.
     storage_dir: Path = BACKEND_ROOT / "storage" / "migration-jobs"
+    # Root folder where submitted support tickets are written (Support feature).
+    support_tickets_dir: Path = BACKEND_ROOT / "storage" / "support-tickets"
+    # Shared GRADLE_USER_HOME used by every job's Gradle/OpenRewrite run and
+    # build validation. Deliberately a sibling of storage_dir (not per-job)
+    # so the (large) Gradle distribution zip and dependency/plugin caches are
+    # downloaded once and reused across jobs, instead of every job re-fetching
+    # them from services.gradle.org and being exposed to network timeouts.
+    gradle_shared_cache_dir: Path = BACKEND_ROOT / "storage" / ".gradle-cache"
+
+    # --- Email / SMTP (Support tickets, best-effort) --------------------------
+    # All blank by default — support ticket submission always succeeds and
+    # persists the ticket even with zero SMTP configuration. Set these env vars
+    # to also send a notification email when a ticket is submitted.
+    smtp_host: str = Field(default="", alias="SMTP_HOST")
+    smtp_port: int = Field(default=587, alias="SMTP_PORT")
+    smtp_username: str = Field(default="", alias="SMTP_USERNAME")
+    smtp_password: str = Field(default="", alias="SMTP_PASSWORD")
+    smtp_use_tls: bool = Field(default=True, alias="SMTP_USE_TLS")
+    smtp_from_address: str = Field(default="", alias="SMTP_FROM_ADDRESS")
+    support_notification_recipient: str = Field(default="", alias="SUPPORT_NOTIFICATION_RECIPIENT")
+
+    @property
+    def is_smtp_configured(self) -> bool:
+        return bool(self.smtp_host and self.smtp_from_address and self.support_notification_recipient)
 
     # --- CORS ----------------------------------------------------------------
     # Comma-separated list of allowed origins for the frontend dev/prod hosts.

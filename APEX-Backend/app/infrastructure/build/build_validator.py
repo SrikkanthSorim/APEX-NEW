@@ -83,7 +83,7 @@ class BuildValidator:
         command = [gradle, *settings.build_gradle_args_list]
         result = run_command(
             command, cwd=project_dir, timeout=settings.build_timeout_seconds,
-            env=build_tool_env(target_major),
+            env=self._gradle_build_env(project_dir, target_major),
         )
         parsed = parse_build_output(result.stdout, result.stderr)
         return BuildResult(
@@ -96,3 +96,35 @@ class BuildValidator:
     @staticmethod
     def _resolve_gradle(project_dir: Path) -> str | None:
         return resolve_gradle_executable(project_dir)
+
+    @staticmethod
+    def _gradle_build_env(project_dir: Path, target_major: int | None) -> dict[str, str]:
+        env = build_tool_env(target_major)
+
+        # Keep Gradle's downloaded distributions/native services out of the
+        # user's default home and out of migrated-repo, matching rewrite runs.
+        # GRADLE_USER_HOME is shared across jobs (see gradle_runner.py) so the
+        # distribution zip is downloaded once and reused instead of every job
+        # re-fetching it and risking a network timeout.
+        cache_root = project_dir.parent / ".javaapex-gradle"
+        gradle_home = settings.gradle_shared_cache_dir
+        java_user_home = cache_root / "java-user-home"
+        gradle_home.mkdir(parents=True, exist_ok=True)
+        java_user_home.mkdir(parents=True, exist_ok=True)
+
+        env["GRADLE_USER_HOME"] = str(gradle_home)
+        # See gradle_runner.py: raise the wrapper bootstrap's default
+        # socket/connection timeout defensively for first-time-per-version
+        # distribution downloads.
+        user_home_option = (
+            f'-Duser.home="{java_user_home}" '
+            "-Dorg.gradle.internal.http.connectionTimeout=120000 "
+            "-Dorg.gradle.internal.http.socketTimeout=120000"
+        )
+        existing_tool_options = env.get("JAVA_TOOL_OPTIONS", "").strip()
+        env["JAVA_TOOL_OPTIONS"] = (
+            f"{existing_tool_options} {user_home_option}".strip()
+            if user_home_option not in existing_tool_options
+            else existing_tool_options
+        )
+        return env

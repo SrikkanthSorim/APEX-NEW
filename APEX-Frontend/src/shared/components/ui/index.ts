@@ -15,3 +15,6 @@ export type { ContainerProps, ContainerSize } from "./Container";
 
 export { default as PageHeader } from "./PageHeader";
 export type { PageHeaderProps } from "./PageHeader";
+
+export { default as Drawer } from "./Drawer";
+export type { DrawerProps } from "./Drawer";

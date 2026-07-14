@@ -36,6 +36,25 @@ class PomSanitizer:
         ("org.mapstruct", "mapstruct-processor"): "${org.mapstruct.version}",
     }
 
+    _PARENT_PATTERN = re.compile(r"<parent>(?P<body>.*?)</parent>", flags=re.IGNORECASE | re.DOTALL)
+    _DEPENDENCY_MANAGEMENT_DEPS_PATTERN = re.compile(
+        r"<dependencyManagement>\s*<dependencies>", flags=re.IGNORECASE
+    )
+    _TOP_LEVEL_DEPENDENCIES_PATTERN = re.compile(r"(?P<indent>[ \t]*)<dependencies>", flags=re.IGNORECASE)
+
+    # spring-boot-starter-parent 2.0.x manages hibernate-validator 6.0.9.Final
+    # -6.0.12.Final. Those releases have a "jdk11+" activation profile in their
+    # own POM (HV-1647) that declares org.openjfx:javafx.base:11.0.0-SNAPSHOT
+    # -- a nonexistent, typo'd coordinate. Any consumer built with a JDK >= 11
+    # (which this pipeline always does for its pre-recipe compile check, since
+    # it runs under the migration's target JDK, not the project's original
+    # one) inherits that profile and fails dependency resolution before
+    # OpenRewrite ever runs. Fixed upstream in 6.0.13.Final (correct
+    # "javafx-base" coordinate, provided scope); pinning to the last 6.0.x
+    # patch sidesteps the bug without changing behavior for the project.
+    _AFFECTED_SPRING_BOOT_PARENT_VERSION_PREFIX = "2.0."
+    _HIBERNATE_VALIDATOR_OVERRIDE_VERSION = "6.0.23.Final"
+
     def sanitize_project(self, project_dir: Path) -> list[str]:
         changes: list[str] = []
         for pom in project_dir.rglob("pom.xml"):
@@ -59,6 +78,15 @@ class PomSanitizer:
                 changes.append(
                     f"Added missing annotationProcessorPaths version for {group}:{artifact} in {pom.name}"
                 )
+
+        fixed, pinned_hibernate_validator = self._fix_hibernate_validator_javafx_leak(text)
+        if pinned_hibernate_validator:
+            text = fixed
+            changes.append(
+                f"Pinned hibernate-validator to {self._HIBERNATE_VALIDATOR_OVERRIDE_VERSION} in {pom.name} "
+                "(spring-boot-starter-parent 2.0.x manages a version whose jdk11+ profile pulls in a "
+                "nonexistent javafx.base coordinate, breaking dependency resolution on JDK 11+)"
+            )
 
         if changes:
             pom.write_text(text, encoding="utf-8")
@@ -128,3 +156,51 @@ class PomSanitizer:
 
         fixes.append((group, artifact))
         return f"{indent}<path>{new_body}</path>"
+
+    def _fix_hibernate_validator_javafx_leak(self, text: str) -> tuple[str, bool]:
+        parent_match = self._PARENT_PATTERN.search(text)
+        if not parent_match:
+            return text, False
+        parent_body = parent_match.group("body")
+        if "spring-boot-starter-parent" not in parent_body:
+            return text, False
+
+        version_match = re.search(r"<version>\s*([^<]+?)\s*</version>", parent_body, flags=re.IGNORECASE)
+        if not version_match or not version_match.group(1).startswith(
+            self._AFFECTED_SPRING_BOOT_PARENT_VERSION_PREFIX
+        ):
+            return text, False
+
+        if re.search(r"<artifactId>\s*hibernate-validator\s*</artifactId>", text, flags=re.IGNORECASE):
+            # Already explicitly managed/declared -- respect the existing choice.
+            return text, False
+
+        dependency_entry = (
+            "\t\t\t<dependency>\n"
+            "\t\t\t\t<groupId>org.hibernate.validator</groupId>\n"
+            "\t\t\t\t<artifactId>hibernate-validator</artifactId>\n"
+            f"\t\t\t\t<version>{self._HIBERNATE_VALIDATOR_OVERRIDE_VERSION}</version>\n"
+            "\t\t\t</dependency>\n"
+        )
+
+        dep_mgmt_match = self._DEPENDENCY_MANAGEMENT_DEPS_PATTERN.search(text)
+        if dep_mgmt_match:
+            insert_at = dep_mgmt_match.end()
+            new_text = text[:insert_at] + "\n" + dependency_entry.rstrip("\n") + text[insert_at:]
+            return new_text, True
+
+        deps_match = self._TOP_LEVEL_DEPENDENCIES_PATTERN.search(text)
+        if not deps_match:
+            return text, False
+
+        indent = deps_match.group("indent")
+        block = (
+            f"{indent}<dependencyManagement>\n"
+            f"{indent}\t<dependencies>\n"
+            f"{dependency_entry}"
+            f"{indent}\t</dependencies>\n"
+            f"{indent}</dependencyManagement>\n\n"
+        )
+        insert_at = deps_match.start()
+        new_text = text[:insert_at] + block + text[insert_at:]
+        return new_text, True

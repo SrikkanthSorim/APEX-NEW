@@ -18,6 +18,7 @@ from app.infrastructure.build.gradle_runner import GradleRewriteRunner
 from app.infrastructure.build.maven_runner import MavenNotAvailableError, MavenRewriteRunner
 from app.infrastructure.analyzers.project_analyzer import ProjectAnalysis, ProjectAnalyzer
 from app.infrastructure.java_runtime import build_compatible_java_target
+from app.infrastructure.migration_engine.gradle_preflight_modernizer import GradlePreflightModernizer
 from app.infrastructure.migration_engine.migration_log_parser import parse_rewrite_output
 from app.infrastructure.migration_engine.pom_sanitizer import PomSanitizer
 from app.infrastructure.migration_engine.recipe_mapper import (
@@ -77,6 +78,7 @@ class AutomatedMigrationRunner:
         self._maven = MavenRewriteRunner()
         self._gradle = GradleRewriteRunner()
         self._pom_sanitizer = PomSanitizer()
+        self._gradle_preflight = GradlePreflightModernizer()
         self._project_analyzer = ProjectAnalyzer()
         self._recipe_mapper = RecipeMapper()
 
@@ -94,7 +96,13 @@ class AutomatedMigrationRunner:
         effective_target_java_version, target_adjustment = build_compatible_java_target(
             target_java_version
         )
+        target_major = _parse_major(effective_target_java_version)
         sanitizer_lines = self._pom_sanitizer.sanitize_project(project_dir) if build_tool == "MAVEN" else []
+        gradle_preflight_lines = (
+            self._gradle_preflight.modernize(project_dir, target_major)
+            if build_tool == "GRADLE"
+            else []
+        )
         analysis = self._project_analyzer.analyze(project_dir)
         pre_dependency_versions = self._dependency_version_map(analysis)
 
@@ -102,7 +110,7 @@ class AutomatedMigrationRunner:
             conversion_types or [],
             frameworks=analysis.frameworks,
             spring_boot_version=analysis.spring_boot_version,
-            target_major=_parse_major(effective_target_java_version),
+            target_major=target_major,
         )
         effective_include_jakarta = include_jakarta or jakarta_auto_reason is not None
 
@@ -126,7 +134,7 @@ class AutomatedMigrationRunner:
         reasons = list(plan.selection_reasons)
         if jakarta_auto_reason:
             reasons.append(jakarta_auto_reason)
-        preflight_lines = adjustment_lines + sanitizer_lines + reasons
+        preflight_lines = adjustment_lines + sanitizer_lines + gradle_preflight_lines + reasons
 
         if not plan.has_recipes:
             already_compatible = not sanitizer_lines
@@ -153,7 +161,6 @@ class AutomatedMigrationRunner:
             project_dir.name,
         )
 
-        target_major = _parse_major(effective_target_java_version)
         if build_tool == "MAVEN":
             result = self._run_maven(project_dir, plan, target_major)
         elif build_tool == "GRADLE":
@@ -168,6 +175,7 @@ class AutomatedMigrationRunner:
         result.project_dir = project_dir
         result.log_lines = preflight_lines + result.log_lines
         result.recipe_selection_reasons = reasons
+        result.build_modernization_lines = sanitizer_lines + gradle_preflight_lines
         result.effective_target_java_version = effective_target_java_version
 
         if not result.success and result.tool_unavailable:

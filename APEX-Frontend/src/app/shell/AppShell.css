@@ -15,6 +15,34 @@
   box-shadow: 0 6px 18px rgba(15, 23, 42, 0.04);
 }
 
+.ui-nav-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 14px;
+  border-radius: 999px;
+  color: #64748b;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+  background: linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(248,250,252,0.92) 100%);
+  border: 1px solid #dbe4ef;
+  cursor: pointer;
+  opacity: 0.9;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.04);
+  transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.ui-nav-button:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.ui-nav-button:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
 .ui-profile-trigger {
   cursor: pointer;
   background: transparent;

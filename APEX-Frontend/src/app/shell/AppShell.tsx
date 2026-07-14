@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import apexLogo from "../../assets/logo.jpg";
 import { API_BASE_URL } from "@/services/config/env";
+import { DocsPanel } from "@/features/docs";
+import { SupportPanel } from "@/features/support";
 import "./AppShell.css";
 
 const shellStyles: { [key: string]: React.CSSProperties } = {
@@ -59,6 +61,7 @@ const shellStyles: { [key: string]: React.CSSProperties } = {
 
 const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [activePanel, setActivePanel] = useState<"docs" | "support" | null>(null);
 
   return (
     <div style={shellStyles.root}>
@@ -67,9 +70,11 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <img src={apexLogo} alt="Apex Logo" className="app-shell-logo" />
         </div>
         <nav className="app-shell-nav">
-          <span
-            title="Coming Soon"
-            className="ui-muted-pill"
+          <button
+            type="button"
+            className="ui-nav-button"
+            onClick={() => setActivePanel("docs")}
+            aria-haspopup="dialog"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -79,16 +84,18 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               <polyline points="10 9 9 9 8 9"></polyline>
             </svg>
             Docs
-          </span>
-          <span
-            title="Coming Soon"
-            className="ui-muted-pill"
+          </button>
+          <button
+            type="button"
+            className="ui-nav-button"
+            onClick={() => setActivePanel("support")}
+            aria-haspopup="dialog"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style={{ opacity: 0.6 }}>
               <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
             </svg>
             Support
-          </span>
+          </button>
           <div className="app-shell-nav-divider" />
           
           {/* Profile Button with Dropdown */}
@@ -290,6 +297,17 @@ const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <span>© {new Date().getFullYear()} <a href="https://sorim.ai/">Sorim.ai</a></span>
         </div>
       </footer>
+
+      <DocsPanel
+        open={activePanel === "docs"}
+        onClose={() => setActivePanel(null)}
+        onNavigateToSupport={() => setActivePanel("support")}
+      />
+      <SupportPanel
+        open={activePanel === "support"}
+        onClose={() => setActivePanel(null)}
+        onNavigateToDocs={() => setActivePanel("docs")}
+      />
     </div>
   );
 };

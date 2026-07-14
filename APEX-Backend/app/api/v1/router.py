@@ -9,8 +9,10 @@ from fastapi import APIRouter
 from app.api.v1.endpoints import (
     connect_controller,
     discovery_controller,
+    docs_controller,
     migration_config_controller,
     migration_execution_controller,
+    support_controller,
 )
 
 api_router = APIRouter()
@@ -18,3 +20,5 @@ api_router.include_router(connect_controller.router)
 api_router.include_router(discovery_controller.router)
 api_router.include_router(migration_config_controller.router)
 api_router.include_router(migration_execution_controller.router)
+api_router.include_router(docs_controller.router)
+api_router.include_router(support_controller.router)
