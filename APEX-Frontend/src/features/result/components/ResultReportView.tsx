@@ -748,6 +748,40 @@ export function ResultReportView({
             </div>
           </div>
 
+          {migrationJob.spring_conversion_requested && (
+            <div style={styles.reportSection}>
+              <h3 style={styles.reportTitle}>Spring Migration</h3>
+              <div style={styles.reportGrid}>
+                <div style={styles.reportItem}>
+                  <span style={styles.reportLabel}>Source Framework</span>
+                  <span style={styles.reportValue}>{migrationJob.spring_source_framework || "N/A"}</span>
+                </div>
+                <div style={styles.reportItem}>
+                  <span style={styles.reportLabel}>Target Framework</span>
+                  <span style={styles.reportValue}>{migrationJob.spring_target_framework || "N/A"}</span>
+                </div>
+                <div style={styles.reportItem}>
+                  <span style={styles.reportLabel}>Spring Boot Version</span>
+                  <span style={styles.reportValue}>
+                    {migrationJob.spring_boot_version_before || "N/A"}
+                    {" -> "}
+                    {migrationJob.spring_boot_version_after || migrationJob.spring_boot_version_before || "N/A"}
+                  </span>
+                </div>
+                <div style={styles.reportItem}>
+                  <span style={styles.reportLabel}>Supported</span>
+                  <span style={styles.reportValue}>{migrationJob.spring_conversion_supported ? "Yes" : "No"}</span>
+                </div>
+                {!migrationJob.spring_conversion_supported && migrationJob.spring_conversion_note && (
+                  <div style={styles.reportItem}>
+                    <span style={styles.reportLabel}>Note</span>
+                    <span style={styles.reportValue}>{migrationJob.spring_conversion_note}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           <div style={styles.reportSection}>
             <h3 style={styles.reportTitle}>Dependency Updates</h3>
             {dependencyUpdates.length > REPORT_DEPENDENCIES_PAGE_SIZE && (

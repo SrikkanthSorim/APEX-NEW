@@ -240,6 +240,13 @@ export interface MigrationResult {
   import_changes?: Array<{ file: string; added: string[]; removed: string[] }>;
   source_changes?: Array<{ file: string; linesChanged: number }>;
   retry_attempts?: Array<{ attempt: number; rootCause: string; recipesAdded: string[]; buildStatus: string }>;
+  spring_source_framework?: string;
+  spring_target_framework?: string;
+  spring_boot_version_before?: string | null;
+  spring_boot_version_after?: string | null;
+  spring_conversion_requested?: boolean;
+  spring_conversion_supported?: boolean | null;
+  spring_conversion_note?: string | null;
 }
 
 export interface MigrationJobSummary {
@@ -308,6 +315,13 @@ export interface MigrationJobSummary {
   build_success?: boolean | null;
   migration_summary?: string;
   retry_attempts?: Array<{ attempt: number; rootCause: string; recipesAdded: string[]; buildStatus: string }>;
+  spring_source_framework?: string;
+  spring_target_framework?: string;
+  spring_boot_version_before?: string | null;
+  spring_boot_version_after?: string | null;
+  spring_conversion_requested?: boolean;
+  spring_conversion_supported?: boolean | null;
+  spring_conversion_note?: string | null;
 }
 
 // Start migration

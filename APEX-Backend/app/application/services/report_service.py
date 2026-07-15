@@ -46,6 +46,15 @@ def _core(report: dict[str, Any]) -> dict[str, Any]:
         "build_success": report.get("buildSuccess"),
         "migration_summary": report.get("migrationSummary") or "",
         "retry_attempts": report.get("retryAttempts") or [],
+        "migration_phases": report.get("migrationPhases") or [],
+        "skipped_recipes": report.get("skippedRecipes") or [],
+        "spring_source_framework": report.get("springSourceFramework") or "",
+        "spring_target_framework": report.get("springTargetFramework") or "",
+        "spring_boot_version_before": report.get("springBootVersionBefore"),
+        "spring_boot_version_after": report.get("springBootVersionAfter"),
+        "spring_conversion_requested": bool(report.get("springConversionRequested")),
+        "spring_conversion_supported": report.get("springConversionSupported"),
+        "spring_conversion_note": report.get("springConversionNote"),
     }
 
 

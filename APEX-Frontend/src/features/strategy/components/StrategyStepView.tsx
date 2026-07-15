@@ -254,7 +254,7 @@ export function StrategyStepView({
                   desc: "Upgrade Spring Boot 2.x to 3.x with Jakarta EE",
                   icon: <FaLeaf />,
                   color: "#22c55e",
-                  status: "coming_soon" as const,
+                  status: "active" as const,
                 },
                 {
                   key: "ui_modernization",
@@ -265,7 +265,7 @@ export function StrategyStepView({
                   status: "coming_soon" as const,
                 },
               ].map((pathway) => {
-                const isActivePathway = pathway.key === "java_version" && selectedConversions.includes("java_version");
+                const isActivePathway = selectedConversions.includes(pathway.key);
                 const isDisabledPathway = pathway.status === "coming_soon";
 
                 return (
@@ -273,7 +273,14 @@ export function StrategyStepView({
                     key={pathway.key}
                     onClick={() => {
                       if (isDisabledPathway) return;
-                      setSelectedConversions(["java_version"]);
+                      if (pathway.key === "java_version") {
+                        setSelectedConversions(["java_version"]);
+                        return;
+                      }
+                      setSelectedConversions((prev) => {
+                        const base = prev.includes("java_version") ? ["java_version"] : [];
+                        return prev.includes(pathway.key) ? base : [...base, pathway.key];
+                      });
                     }}
                     accent={pathway.color}
                     selected={isActivePathway}

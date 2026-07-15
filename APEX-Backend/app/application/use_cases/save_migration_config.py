@@ -26,6 +26,14 @@ VALID_MODES = {MODE_CREATE_NEW_REPO, MODE_EXISTING_REPO_BRANCH, MODE_LOCAL_FOLDE
 DEFAULT_TARGET_OWNER = "Javaapex"
 DEFAULT_TARGET_HOST = "github.com"
 
+SPRING_BOOT_CONVERSION = "spring_boot"
+SPRING_BOOT_CONVERSION_ALIASES = {
+    "spring_boot",
+    "spring_to_spring_boot",
+    "spring-to-spring-boot",
+    "spring-boot",
+}
+
 STATUS_SAVED = "MIGRATION_CONFIG_SAVED"
 NEXT_STEP = "START_MIGRATION"
 
@@ -48,6 +56,11 @@ class SaveMigrationConfigUseCase:
         # 2. Validate the destination.
         destination = dict(config.get("destination") or {})
         destination = self._validate_destination(destination)
+        discovery = self._job_repository.read_discovery_report(job_id) or {}
+        conversion_types = self._normalize_conversion_types(
+            config.get("conversionTypes") or [],
+            discovery,
+        )
 
         # 3. Build + persist the report.
         created_at = datetime.now(timezone.utc).isoformat()
@@ -58,7 +71,7 @@ class SaveMigrationConfigUseCase:
             "sourceJavaVersion": config.get("sourceJavaVersion"),
             "targetJavaVersion": config.get("targetJavaVersion"),
             "buildTool": config.get("buildTool"),
-            "conversionTypes": config.get("conversionTypes") or [],
+            "conversionTypes": conversion_types,
             "options": config.get("options") or {},
             "destination": destination,
             "createdAt": created_at,
@@ -114,3 +127,33 @@ class SaveMigrationConfigUseCase:
                 )
 
         return destination
+
+    @staticmethod
+    def _normalize_conversion_types(
+        requested: list[Any],
+        discovery: dict[str, Any],
+    ) -> list[str]:
+        """Keep Spring Boot conversion aligned with the analyzed repository.
+
+        The frontend can send stale checkbox state. Discovery is the source of
+        truth: Spring Boot upgrades should be enabled only for detected Spring
+        Boot projects, and disabled for plain Java / non-Boot repositories.
+        """
+        normalized: list[str] = []
+        for item in requested:
+            conversion = str(item).strip()
+            if not conversion:
+                continue
+            key = conversion.lower()
+            if key in SPRING_BOOT_CONVERSION_ALIASES:
+                continue
+            if conversion not in normalized:
+                normalized.append(conversion)
+
+        is_spring_boot = bool(discovery.get("springBootVersion")) or (
+            str(discovery.get("projectType") or "").upper() == "SPRING_BOOT"
+        )
+        if is_spring_boot and SPRING_BOOT_CONVERSION not in normalized:
+            normalized.append(SPRING_BOOT_CONVERSION)
+
+        return normalized

@@ -133,6 +133,12 @@ class RecipeMapper:
         include_jakarta: bool,
         context: MigrationRecipeContext | None = None,
         extra_recipes: list[ExtraRecipe] | None = None,
+        include_java_upgrade: bool = True,
+        include_conditional: bool = True,
+        include_spring_boot: bool = True,
+        include_dependency_currency: bool = True,
+        include_cleanup: bool = True,
+        cleanup_only: bool = False,
     ) -> RecipePlan:
         if context is None:
             context = MigrationRecipeContext(
@@ -148,7 +154,7 @@ class RecipeMapper:
 
         target = _parse_major(target_java_version)
         source = _parse_major(context.source_java_version)
-        if target is not None and (source is None or source < target):
+        if include_java_upgrade and target is not None and (source is None or source < target):
             rule = self._select_java_rule(target)
             if rule:
                 self._append_recipe(rule.get("recipe", ""), rule.get("artifact", ""), recipes, artifacts)
@@ -166,31 +172,34 @@ class RecipeMapper:
                 artifacts,
             )
             reasons.append(f"Asserting exact target Java version {target} via UpgradeJavaVersion")
-        elif target is not None:
+        elif include_java_upgrade and target is not None:
             reasons.append(
                 f"Source Java {source} already meets target {target}; no Java-version upgrade recipe needed."
             )
 
-        for rule in self._catalog.get("conditionalRecipes", []):
-            if self._matches_rule(rule, context, target, include_jakarta):
-                self._append_recipe(rule.get("recipe", ""), rule.get("artifact", ""), recipes, artifacts)
-                reasons.append(f"Selected conditional recipe {rule.get('id')}: {rule.get('recipe')}")
+        if include_conditional:
+            for rule in self._catalog.get("conditionalRecipes", []):
+                if self._matches_rule(rule, context, target, include_jakarta):
+                    self._append_recipe(rule.get("recipe", ""), rule.get("artifact", ""), recipes, artifacts)
+                    reasons.append(f"Selected conditional recipe {rule.get('id')}: {rule.get('recipe')}")
 
-        spring_recipe = self._select_spring_boot_recipe(context, target, include_jakarta)
-        if spring_recipe:
-            ladder = self._catalog.get("springBootRecipeLadder") or {}
-            self._append_recipe(spring_recipe, ladder.get("artifact", "spring"), recipes, artifacts)
-            reasons.append(f"Selected Spring Boot upgrade recipe: {spring_recipe}")
+        if include_spring_boot:
+            spring_recipe = self._select_spring_boot_recipe(context, target, include_jakarta)
+            if spring_recipe:
+                ladder = self._catalog.get("springBootRecipeLadder") or {}
+                self._append_recipe(spring_recipe, ladder.get("artifact", "spring"), recipes, artifacts)
+                reasons.append(f"Selected Spring Boot upgrade recipe: {spring_recipe}")
 
-        for entry, artifact_key, reason in self._dependency_currency_entries(context):
-            self._append_recipe(entry, artifact_key, recipes, artifacts)
-            reasons.append(reason)
+        if include_dependency_currency:
+            for entry, artifact_key, reason in self._dependency_currency_entries(context):
+                self._append_recipe(entry, artifact_key, recipes, artifacts)
+                reasons.append(reason)
 
         for entry, artifact_key, reason in extra_recipes or []:
             self._append_recipe(entry, artifact_key, recipes, artifacts)
             reasons.append(reason)
 
-        if recipes:
+        if include_cleanup and (recipes or cleanup_only):
             for rule in self._catalog.get("cleanupRecipes", []):
                 self._append_recipe(rule.get("recipe", ""), rule.get("artifact", ""), recipes, artifacts)
                 reasons.append(f"Selected cleanup recipe {rule.get('id')}: {rule.get('recipe')}")

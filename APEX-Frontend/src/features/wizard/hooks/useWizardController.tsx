@@ -3535,6 +3535,12 @@ export function useWizardController() {
           description: "Convert pom.xml to build.gradle with dependency mapping",
         },
         {
+          key: "spring_boot",
+          title: "Spring -> Spring Boot",
+          status: "active",
+          description: "Upgrade Spring Boot 2.x to 3.x with Jakarta EE",
+        },
+        {
           key: "business_logic",
           title: "Business Logic Refactoring",
           status: "coming_soon",

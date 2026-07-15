@@ -45,6 +45,7 @@
     {
       "id": "junit4-to-5",
       "whenFramework": ["junit"],
+      "whenConversion": ["test_migration", "junit4_to_5", "junit4-to-5", "junit"],
       "recipe": "org.openrewrite.java.testing.junit5.JUnit5BestPractices",
       "artifact": "testing"
     }

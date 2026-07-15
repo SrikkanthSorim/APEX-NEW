@@ -15,6 +15,7 @@ from typing import Any
 
 from app.application.services import progress_service
 from app.application.services.status_service import MigrationReportStore
+from app.application.use_cases.save_migration_config import SaveMigrationConfigUseCase
 from app.core.config import settings
 from app.core.exceptions import (
     DiscoveryReportRequiredError,
@@ -39,6 +40,7 @@ from app.infrastructure.persistence.job_repository import JobRepository
 from app.infrastructure.quality_gates.quality_gate_runner import QualityGateRunner
 from app.infrastructure.workspace.workspace_manager import WorkspaceManager
 from app.infrastructure.workspace.workspace_paths import WorkspacePaths
+from app.shared import file_utils
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +106,13 @@ class StartMigrationUseCase:
         if not target_java:
             raise MigrationExecutionError("No target Java version selected.")
 
+        conversion_types = SaveMigrationConfigUseCase._normalize_conversion_types(
+            config.get("conversionTypes")
+            or request.get("conversion_types")
+            or [],
+            discovery,
+        )
+
         destination = self._resolve_destination(config, connect)
 
         store = MigrationReportStore(WorkspacePaths(job_id))
@@ -116,9 +125,7 @@ class StartMigrationUseCase:
             "sourceJavaVersion": str(source_java),
             "targetJavaVersion": str(target_java),
             "buildTool": build_tool,
-            "conversionTypes": config.get("conversionTypes")
-            or request.get("conversion_types")
-            or [],
+            "conversionTypes": conversion_types,
             "options": options,
             "runSonar": bool(options.get("runSonar") or request.get("run_sonar")),
             "runFossa": bool(options.get("runFossa") or request.get("run_fossa")),
@@ -165,6 +172,7 @@ class StartMigrationUseCase:
             result, build_result, retry_attempts = self._run_migration_with_retries(
                 store, job_id, paths, build_tool, target_java, report, conversion_types,
             )
+            spring_source_framework, spring_target_framework = self._describe_spring_frameworks(result)
             store.update(
                 recipes=result.recipes,
                 usedFallback=result.used_fallback,
@@ -174,6 +182,15 @@ class StartMigrationUseCase:
                 dependencyUpgrades=result.dependency_upgrades,
                 alreadyCompatible=result.already_compatible,
                 retryAttempts=retry_attempts,
+                migrationPhases=result.phase_results,
+                skippedRecipes=result.skipped_recipes,
+                springConversionRequested=result.spring_conversion_requested,
+                springConversionSupported=result.spring_conversion_supported,
+                springConversionNote=result.spring_conversion_note,
+                springBootVersionBefore=result.spring_boot_version_before,
+                springBootVersionAfter=result.spring_boot_version_after,
+                springSourceFramework=spring_source_framework,
+                springTargetFramework=spring_target_framework,
             )
 
             if not result.success:
@@ -217,6 +234,7 @@ class StartMigrationUseCase:
                 store, status=MigrationStatus.RUNNING.value,
                 step=MigrationStep.PUBLISHING.value, percent=85,
             )
+            file_utils.remove_tree(paths.migrated_repo_dir / ".git")
             publish_target_java = result.effective_target_java_version or target_java
             target_repo = self._publish(store, report, paths, publish_target_java)
 
@@ -405,6 +423,28 @@ class StartMigrationUseCase:
     # -- migration report summary --------------------------------------------- #
 
     @staticmethod
+    def _describe_spring_frameworks(result: MigrationRunResult) -> tuple[str, str]:
+        """Human-readable source/target framework labels for the report,
+        derived from what was actually detected -- no version numbers or
+        recipe choices are hardcoded here.
+        """
+        if result.spring_boot_version_before:
+            source = f"Spring Boot {result.spring_boot_version_before}"
+        elif result.spring_conversion_note and "Legacy Spring Framework" in result.spring_conversion_note:
+            source = "Spring Framework (legacy, non-Boot)"
+        elif result.spring_conversion_requested:
+            source = "Not a Spring project"
+        else:
+            source = ""
+
+        if result.spring_conversion_supported and result.spring_boot_version_after:
+            target = f"Spring Boot {result.spring_boot_version_after}"
+        else:
+            target = source
+
+        return source, target
+
+    @staticmethod
     def _build_migration_summary(
         report: dict[str, Any],
         result: MigrationRunResult,
@@ -439,6 +479,17 @@ class StartMigrationUseCase:
                 "Applied deterministic build-configuration fallback (Migration did not run)."
             )
 
+        if result.spring_conversion_requested:
+            if result.spring_conversion_supported:
+                before = result.spring_boot_version_before or "unknown"
+                after = result.spring_boot_version_after or before
+                parts.append(
+                    f"Spring -> Spring Boot conversion: upgraded Spring Boot "
+                    f"from {before} to {after} for target Java {target}."
+                )
+            elif result.spring_conversion_note:
+                parts.append(f"Spring -> Spring Boot conversion: {result.spring_conversion_note}")
+
         if result.dependency_upgrades:
             upgrades = ", ".join(
                 f"{upgrade['coordinate']} {upgrade.get('oldVersion') or '?'} -> {upgrade['newVersion']}"
@@ -447,6 +498,13 @@ class StartMigrationUseCase:
             parts.append(
                 f"Upgraded {len(result.dependency_upgrades)} dependency/dependencies: {upgrades}."
             )
+
+        if result.skipped_recipes:
+            skipped = "; ".join(
+                f"{item.get('label') or item.get('phase')}: {item.get('reason')}"
+                for item in result.skipped_recipes
+            )
+            parts.append(f"Skipped optional migration phase(s): {skipped}.")
 
         if change_analysis.import_changes:
             parts.append(f"Updated imports in {len(change_analysis.import_changes)} file(s).")

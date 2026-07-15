@@ -29,12 +29,37 @@ from app.infrastructure.migration_engine.recipe_mapper import (
     _parse_major,
 )
 from app.shared import file_utils
+from app.shared.command_runner import resolve_executable, run_command
 
 logger = logging.getLogger(__name__)
 
 _BUILD_FILES = ("pom.xml", "build.gradle", "build.gradle.kts")
 
 _JAKARTA_MIN_TARGET = 17
+
+SPRING_BOOT_CONVERSION_KEYS = {"spring_boot", "spring_to_spring_boot", "spring-boot"}
+TEST_MIGRATION_KEYS = {"test_migration", "junit4_to_5", "junit4-to-5", "junit"}
+DEPENDENCY_MIGRATION_KEYS = {"dependency_updates", "dependency_upgrade", "dependencies"}
+
+
+@dataclass(frozen=True)
+class MigrationPhase:
+    id: str
+    label: str
+    optional: bool = True
+    conversion_types: list[str] = field(default_factory=list)
+    include_java_upgrade: bool = False
+    include_conditional: bool = False
+    include_spring_boot: bool = False
+    include_dependency_currency: bool = False
+    include_cleanup: bool = False
+    cleanup_only: bool = False
+
+
+@dataclass(frozen=True)
+class GitCheckpoint:
+    revision: str
+    available: bool
 
 
 @dataclass(frozen=True)
@@ -71,6 +96,13 @@ class MigrationRunResult:
     dependency_upgrades: list[dict] = field(default_factory=list)
     effective_target_java_version: str | None = None
     already_compatible: bool = False
+    spring_conversion_requested: bool = False
+    spring_conversion_supported: bool | None = None
+    spring_conversion_note: str | None = None
+    spring_boot_version_before: str | None = None
+    spring_boot_version_after: str | None = None
+    phase_results: list[dict] = field(default_factory=list)
+    skipped_recipes: list[dict] = field(default_factory=list)
 
 
 class AutomatedMigrationRunner:
@@ -114,70 +146,167 @@ class AutomatedMigrationRunner:
         )
         effective_include_jakarta = include_jakarta or jakarta_auto_reason is not None
 
-        context = MigrationRecipeContext(
-            source_java_version=analysis.current_java_version,
-            target_java_version=effective_target_java_version,
-            build_tool=build_tool,
-            frameworks=analysis.frameworks,
-            dependencies=[f"{dep.group_id}:{dep.artifact_id}" for dep in analysis.dependencies],
-            build_plugins=[plugin.id for plugin in analysis.build_plugins],
-            bom_versions=[f"{bom.group_id}:{bom.artifact_id}" for bom in analysis.bom_versions],
-            conversion_types=effective_conversion_types,
+        spring_requested, spring_supported, spring_note = self._spring_conversion_status(
+            effective_conversion_types, frameworks=analysis.frameworks,
         )
-        plan = self._recipe_mapper.build_plan(
-            effective_target_java_version,
-            include_jakarta=effective_include_jakarta,
-            context=context,
-            extra_recipes=extra_recipes,
-        )
+        spring_boot_version_before = analysis.spring_boot_version
+
         adjustment_lines = [target_adjustment] if target_adjustment else []
-        reasons = list(plan.selection_reasons)
+        preflight_lines = adjustment_lines + sanitizer_lines + gradle_preflight_lines
+        reasons: list[str] = []
         if jakarta_auto_reason:
             reasons.append(jakarta_auto_reason)
-        preflight_lines = adjustment_lines + sanitizer_lines + gradle_preflight_lines + reasons
+            preflight_lines.append(jakarta_auto_reason)
 
-        if not plan.has_recipes:
-            already_compatible = not sanitizer_lines
-            completion_message = (
-                "Project is already compatible with the selected target Java "
-                "version. No import or source code changes were required."
-                if already_compatible
-                else "No applicable OpenRewrite recipes for the selected target."
-            )
-            return MigrationRunResult(
-                success=True,
-                tool="none",
-                project_dir=project_dir,
-                log_lines=preflight_lines + [completion_message],
-                recipe_selection_reasons=reasons,
-                effective_target_java_version=effective_target_java_version,
-                already_compatible=already_compatible,
-            )
-
-        logger.info(
-            "OpenRewrite (%s) recipes=%s in %s",
-            build_tool,
-            ", ".join(plan.active_recipes),
-            project_dir.name,
+        final_result = MigrationRunResult(
+            success=True,
+            tool="none",
+            project_dir=project_dir,
+            log_lines=list(preflight_lines),
+            recipe_selection_reasons=list(reasons),
+            build_modernization_lines=sanitizer_lines + gradle_preflight_lines,
+            effective_target_java_version=effective_target_java_version,
+            spring_conversion_requested=spring_requested,
+            spring_conversion_supported=spring_supported,
+            spring_conversion_note=spring_note,
+            spring_boot_version_before=spring_boot_version_before,
         )
 
-        if build_tool == "MAVEN":
-            result = self._run_maven(project_dir, plan, target_major)
-        elif build_tool == "GRADLE":
-            result = self._run_gradle(project_dir, plan, target_major)
-        else:
-            result = MigrationRunResult(
-                success=False,
-                tool="none",
-                error_lines=[f"Unsupported build tool: {build_tool}"],
-            )
-        result.recipes = plan.active_recipes
-        result.project_dir = project_dir
-        result.log_lines = preflight_lines + result.log_lines
-        result.recipe_selection_reasons = reasons
-        result.build_modernization_lines = sanitizer_lines + gradle_preflight_lines
-        result.effective_target_java_version = effective_target_java_version
+        any_recipe_ran = False
+        phases = self._migration_phases(
+            analysis,
+            target_major=target_major,
+            effective_conversion_types=effective_conversion_types,
+            effective_include_jakarta=effective_include_jakarta,
+            extra_recipes=extra_recipes,
+        )
 
+        for phase in phases:
+            analysis = self._project_analyzer.analyze(project_dir)
+            context = self._recipe_context(
+                analysis,
+                build_tool=build_tool,
+                target_java_version=effective_target_java_version,
+                conversion_types=phase.conversion_types,
+            )
+            phase_extra_recipes = extra_recipes if phase.id == "build-repair" else None
+            plan = self._recipe_mapper.build_plan(
+                effective_target_java_version,
+                include_jakarta=effective_include_jakarta,
+                context=context,
+                extra_recipes=phase_extra_recipes,
+                include_java_upgrade=phase.include_java_upgrade,
+                include_conditional=phase.include_conditional,
+                include_spring_boot=phase.include_spring_boot,
+                include_dependency_currency=phase.include_dependency_currency,
+                include_cleanup=phase.include_cleanup,
+                cleanup_only=phase.cleanup_only,
+            )
+            phase_reasons = list(plan.selection_reasons)
+            final_result.recipe_selection_reasons.extend(
+                reason for reason in phase_reasons
+                if reason not in final_result.recipe_selection_reasons
+            )
+
+            if not plan.has_recipes:
+                final_result.phase_results.append({
+                    "id": phase.id,
+                    "label": phase.label,
+                    "status": "skipped",
+                    "reason": "No applicable recipes for this repository.",
+                    "recipes": [],
+                })
+                continue
+
+            logger.info(
+                "OpenRewrite phase %s (%s) recipes=%s in %s",
+                phase.id,
+                build_tool,
+                ", ".join(plan.active_recipes),
+                project_dir.name,
+            )
+            final_result.log_lines.append(f"===== MIGRATION PHASE: {phase.label} =====")
+            final_result.log_lines.extend(phase_reasons)
+
+            checkpoint = self._checkpoint(project_dir) if phase.optional else None
+            result = self._run_phase(project_dir, build_tool, plan, target_major)
+            final_result.tool = result.tool
+
+            if result.success:
+                any_recipe_ran = True
+                final_result.recipes.extend(
+                    recipe for recipe in plan.active_recipes
+                    if recipe not in final_result.recipes
+                )
+                final_result.log_lines.extend(result.log_lines)
+                final_result.error_lines.extend(result.error_lines)
+                final_result.phase_results.append({
+                    "id": phase.id,
+                    "label": phase.label,
+                    "status": "completed",
+                    "recipes": plan.active_recipes,
+                })
+                continue
+
+            if phase.optional and self._restore_checkpoint(project_dir, checkpoint):
+                reason = self._first_error(result)
+                skipped = {
+                    "phase": phase.id,
+                    "label": phase.label,
+                    "recipes": plan.active_recipes,
+                    "reason": reason,
+                }
+                final_result.skipped_recipes.append(skipped)
+                final_result.phase_results.append({
+                    "id": phase.id,
+                    "label": phase.label,
+                    "status": "skipped",
+                    "recipes": plan.active_recipes,
+                    "reason": reason,
+                })
+                final_result.log_lines.extend(result.log_lines)
+                final_result.log_lines.append(
+                    f"Skipped optional phase '{phase.label}' because OpenRewrite failed: {reason}"
+                )
+                final_result.error_lines.extend(result.error_lines)
+                continue
+
+            result.recipes = plan.active_recipes
+            result.project_dir = project_dir
+            result.log_lines = final_result.log_lines + result.log_lines
+            result.error_lines = final_result.error_lines + result.error_lines
+            result.recipe_selection_reasons = final_result.recipe_selection_reasons
+            result.build_modernization_lines = final_result.build_modernization_lines
+            result.effective_target_java_version = effective_target_java_version
+            result.spring_conversion_requested = spring_requested
+            result.spring_conversion_supported = spring_supported
+            result.spring_conversion_note = spring_note
+            result.spring_boot_version_before = spring_boot_version_before
+            result.phase_results = final_result.phase_results
+            result.skipped_recipes = final_result.skipped_recipes
+            return self._describe_failed_result(result, build_tool)
+
+        if not any_recipe_ran:
+            final_result.already_compatible = not sanitizer_lines
+            final_result.log_lines.append(
+                "Project is already compatible with the selected target Java "
+                "version. No import or source code changes were required."
+                if final_result.already_compatible
+                else "No applicable OpenRewrite recipes for the selected target."
+            )
+        else:
+            upgrades, final_result.spring_boot_version_after = self._diff_dependency_upgrades(
+                project_dir, pre_dependency_versions
+            )
+            final_result.dependency_upgrades = [upgrade.to_dict() for upgrade in upgrades]
+
+        return final_result
+
+    def _describe_failed_result(
+        self,
+        result: MigrationRunResult,
+        build_tool: str,
+    ) -> MigrationRunResult:
         if not result.success and result.tool_unavailable:
             # A genuine environment limitation (the build tool itself isn't
             # installed) -- report it plainly, same spirit as how
@@ -208,13 +337,184 @@ class AutomatedMigrationRunner:
                 "incompatible plugin/dependency) before automated migration "
                 "can proceed."
             )
-        elif result.success and plan.has_recipes:
-            result.dependency_upgrades = [
-                upgrade.to_dict()
-                for upgrade in self._diff_dependency_upgrades(project_dir, pre_dependency_versions)
-            ]
-
         return result
+
+    def _migration_phases(
+        self,
+        analysis: ProjectAnalysis,
+        *,
+        target_major: int | None,
+        effective_conversion_types: list[str],
+        effective_include_jakarta: bool,
+        extra_recipes: list[ExtraRecipe] | None,
+    ) -> list[MigrationPhase]:
+        normalized = {
+            str(item).strip().lower()
+            for item in effective_conversion_types
+            if str(item).strip()
+        }
+        source_major = _parse_major(analysis.current_java_version)
+        phases: list[MigrationPhase] = []
+
+        if target_major is not None and (source_major is None or source_major < target_major):
+            phases.append(
+                MigrationPhase(
+                    id="java-version",
+                    label="Java version migration",
+                    optional=False,
+                    conversion_types=["java_version"],
+                    include_java_upgrade=True,
+                )
+            )
+
+        if normalized & SPRING_BOOT_CONVERSION_KEYS:
+            phases.append(
+                MigrationPhase(
+                    id="spring-boot",
+                    label="Spring Boot migration",
+                    conversion_types=["spring_boot"],
+                    include_spring_boot=True,
+                )
+            )
+
+        if effective_include_jakarta:
+            phases.append(
+                MigrationPhase(
+                    id="jakarta",
+                    label="Jakarta namespace migration",
+                    conversion_types=["jakarta"],
+                    include_conditional=True,
+                )
+            )
+
+        if normalized & DEPENDENCY_MIGRATION_KEYS:
+            phases.append(
+                MigrationPhase(
+                    id="dependencies",
+                    label="Dependency currency updates",
+                    conversion_types=["dependency_updates"],
+                    include_dependency_currency=True,
+                )
+            )
+
+        if extra_recipes:
+            phases.append(
+                MigrationPhase(
+                    id="build-repair",
+                    label="Build repair recipes",
+                    optional=False,
+                    conversion_types=list(effective_conversion_types),
+                )
+            )
+
+        if normalized & TEST_MIGRATION_KEYS:
+            phases.append(
+                MigrationPhase(
+                    id="test-migration",
+                    label="Test framework migration",
+                    conversion_types=["test_migration"],
+                    include_conditional=True,
+                )
+            )
+
+        if phases:
+            phases.append(
+                MigrationPhase(
+                    id="cleanup",
+                    label="Cleanup",
+                    include_cleanup=True,
+                    cleanup_only=True,
+                )
+            )
+        return phases
+
+    @staticmethod
+    def _recipe_context(
+        analysis: ProjectAnalysis,
+        *,
+        build_tool: str,
+        target_java_version: str | None,
+        conversion_types: list[str],
+    ) -> MigrationRecipeContext:
+        return MigrationRecipeContext(
+            source_java_version=analysis.current_java_version,
+            target_java_version=target_java_version,
+            build_tool=build_tool,
+            frameworks=analysis.frameworks,
+            dependencies=[f"{dep.group_id}:{dep.artifact_id}" for dep in analysis.dependencies],
+            build_plugins=[plugin.id for plugin in analysis.build_plugins],
+            bom_versions=[f"{bom.group_id}:{bom.artifact_id}" for bom in analysis.bom_versions],
+            conversion_types=conversion_types,
+        )
+
+    def _run_phase(
+        self,
+        project_dir: Path,
+        build_tool: str,
+        plan: RecipePlan,
+        target_major: int | None,
+    ) -> MigrationRunResult:
+        if build_tool == "MAVEN":
+            return self._run_maven(project_dir, plan, target_major)
+        if build_tool == "GRADLE":
+            return self._run_gradle(project_dir, plan, target_major)
+        return MigrationRunResult(
+            success=False,
+            tool="none",
+            error_lines=[f"Unsupported build tool: {build_tool}"],
+        )
+
+    @staticmethod
+    def _first_error(result: MigrationRunResult) -> str:
+        for line in result.error_lines:
+            text = str(line).strip()
+            if text:
+                return text
+        return "OpenRewrite phase failed. See logs for details."
+
+    @staticmethod
+    def _checkpoint(project_dir: Path) -> GitCheckpoint | None:
+        git = resolve_executable("git")
+        if not git:
+            return GitCheckpoint(revision="", available=False)
+
+        commands = (
+            ["init", "-q"],
+            ["config", "user.name", "JavaApex Migration"],
+            ["config", "user.email", "migration@javaapex.local"],
+            ["add", "-A"],
+            ["commit", "--allow-empty", "-q", "-m", "javaapex migration checkpoint"],
+        )
+        for args in commands:
+            result = run_command([git, *args], cwd=project_dir, timeout=60)
+            if not result.succeeded:
+                logger.warning("Unable to create migration checkpoint: git %s failed", args[0])
+                return GitCheckpoint(revision="", available=False)
+
+        head = run_command([git, "rev-parse", "HEAD"], cwd=project_dir, timeout=30)
+        if not head.succeeded:
+            return GitCheckpoint(revision="", available=False)
+        return GitCheckpoint(revision=head.stdout.strip(), available=True)
+
+    @staticmethod
+    def _restore_checkpoint(project_dir: Path, checkpoint: GitCheckpoint | None) -> bool:
+        if checkpoint is None:
+            return False
+        if not checkpoint.available or not checkpoint.revision:
+            return False
+        git = resolve_executable("git")
+        if not git:
+            return False
+        reset = run_command(
+            [git, "reset", "--hard", checkpoint.revision],
+            cwd=project_dir,
+            timeout=60,
+        )
+        clean = run_command([git, "clean", "-fd"], cwd=project_dir, timeout=60)
+        if not reset.succeeded or not clean.succeeded:
+            logger.warning("Unable to restore migration checkpoint.")
+            return False
+        return True
 
     # -- runners ------------------------------------------------------------- #
 
@@ -265,11 +565,13 @@ class AutomatedMigrationRunner:
 
     def _diff_dependency_upgrades(
         self, project_dir: Path, pre_versions: dict[str, str | None]
-    ) -> list[DependencyUpgrade]:
+    ) -> tuple[list[DependencyUpgrade], str | None]:
         """Observe what OpenRewrite actually changed by re-reading the build
         file after the run, rather than predicting it beforehand -- dependency
         version numbers are resolved by OpenRewrite itself (``latest.release``
-        / ``latest.patch``), never by this codebase.
+        / ``latest.patch``), never by this codebase. Also surfaces the
+        post-migration Spring Boot version off the same re-analysis, so a
+        second ``ProjectAnalyzer.analyze`` call isn't needed just for that.
         """
         post_analysis = self._project_analyzer.analyze(project_dir)
         upgrades: list[DependencyUpgrade] = []
@@ -280,7 +582,7 @@ class AutomatedMigrationRunner:
             old_version = pre_versions[key]
             if dep.version and dep.version != old_version:
                 upgrades.append(DependencyUpgrade(key, old_version, dep.version))
-        return upgrades
+        return upgrades, post_analysis.spring_boot_version
 
     @staticmethod
     def _resolve_conversion_types(
@@ -329,3 +631,43 @@ class AutomatedMigrationRunner:
                 f"target Java {target_major} ({trigger})"
             )
         return resolved, None
+
+    @staticmethod
+    def _spring_conversion_status(
+        requested: list[str], *, frameworks: list[str],
+    ) -> tuple[bool, bool | None, str | None]:
+        """Attribute the "Spring -> Spring Boot" conversion type against what
+        was actually detected. Scoped to Boot-to-Boot upgrades only -- the
+        upgrade ladder in the recipe catalog already runs unconditionally for
+        any detected Spring Boot project regardless of this conversion type,
+        so this method never changes recipe selection; it only decides
+        whether that (unconditional) behavior should be attributed to an
+        explicit user request, or reported as not supported for a legacy
+        (non-Boot) Spring Framework project, where OpenRewrite has no
+        automated bootstrapping recipe upstream.
+        """
+        normalized = {str(item).strip().lower() for item in requested}
+        if not (normalized & SPRING_BOOT_CONVERSION_KEYS):
+            return False, None, None
+
+        framework_set = {item.lower() for item in frameworks}
+        if "spring-boot" in framework_set:
+            return True, True, (
+                "Detected an existing Spring Boot application; applying "
+                "OpenRewrite's Spring Boot upgrade ladder toward a version "
+                "compatible with the selected target Java version."
+            )
+        if "spring-framework" in framework_set:
+            return True, False, (
+                "Legacy Spring Framework (non-Boot) to Spring Boot conversion "
+                "is not yet supported: OpenRewrite has no automated recipe "
+                "for bootstrapping a plain Spring Framework project into "
+                "Spring Boot (removing web.xml, converting XML bean "
+                "configuration, adding an embedded server, etc.). No changes "
+                "were applied for this conversion type."
+            )
+        return True, False, (
+            "No Spring Framework or Spring Boot dependency was detected in "
+            "this project; the Spring -> Spring Boot conversion type does "
+            "not apply."
+        )
