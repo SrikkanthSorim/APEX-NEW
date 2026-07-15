@@ -23,6 +23,8 @@ from app.infrastructure.analyzers.java_version_detector import JavaVersionDetect
 from app.infrastructure.analyzers.module_detector import ModuleDetector
 from app.infrastructure.analyzers.project_type_detector import ProjectTypeDetector
 from app.infrastructure.analyzers.spring_boot_detector import SpringBootDetector
+from app.infrastructure.analyzers.spring_entrypoint_scanner import SpringEntrypointScanner
+from app.infrastructure.analyzers.spring_framework_detector import SpringFrameworkDetector
 from app.shared import file_utils
 
 
@@ -33,6 +35,9 @@ class ProjectAnalysis:
     build_warning: str | None
     current_java_version: str
     spring_boot_version: str | None
+    spring_framework_version: str | None
+    spring_boot_signal: bool
+    spring_entry_class: str | None
     project_type: str
     multi_module: bool
     modules: list[str]
@@ -66,6 +71,8 @@ class ProjectAnalyzer:
         self._build_tool = BuildToolDetector()
         self._java_version = JavaVersionDetector()
         self._spring_boot = SpringBootDetector()
+        self._spring_framework = SpringFrameworkDetector()
+        self._spring_entrypoint = SpringEntrypointScanner()
         self._dependencies = DependencyAnalyzer()
         self._metadata = BuildMetadataAnalyzer()
         self._modules = ModuleDetector()
@@ -93,6 +100,20 @@ class ProjectAnalyzer:
             build_tool.build_tool, pom_root, build_gradle_text, gradle_properties_text
         )
         spring_boot_version = self._spring_boot.detect(pom_root, build_gradle_text)
+        spring_boot_signal = self._spring_boot.has_signal(pom_root, build_gradle_text)
+        spring_framework_version = self._spring_framework.detect(pom_root, build_gradle_text)
+        java_files = file_utils.find_files(project_root, ".java")
+
+        spring_entry_class: str | None = None
+        if not spring_boot_version and not spring_boot_signal:
+            # Build-file signals were inconclusive (e.g. a custom parent that
+            # manages the Spring Boot version elsewhere) -- fall back to a
+            # real code-level scan for the entry-point markers.
+            entrypoint = self._spring_entrypoint.scan(project_root, java_files)
+            if entrypoint.found:
+                spring_boot_signal = True
+                spring_entry_class = entrypoint.entry_class
+
         dependencies = self._dependencies.analyze(pom_root, build_gradle_text)
         build_plugins = self._metadata.detect_plugins(pom_root, build_gradle_text)
         bom_versions = self._metadata.detect_boms(pom_root, build_gradle_text)
@@ -100,10 +121,15 @@ class ProjectAnalyzer:
             spring_boot_version=spring_boot_version,
             dependencies=dependencies,
             build_gradle_text=build_gradle_text,
+            spring_boot_signal=spring_boot_signal,
         )
         modules = self._modules.detect(pom_root, settings_gradle_text)
         project_type = self._project_type.detect(
-            project_root, build_tool.is_supported, spring_boot_version, dependencies
+            project_root,
+            build_tool.is_supported,
+            spring_boot_version,
+            dependencies,
+            spring_boot_signal=spring_boot_signal,
         )
         # Scan the whole repo for a frontend (it commonly sits beside the backend,
         # e.g. repo/frontend + repo/backend).
@@ -118,6 +144,9 @@ class ProjectAnalyzer:
             build_warning=build_tool.warning,
             current_java_version=java_version,
             spring_boot_version=spring_boot_version,
+            spring_framework_version=spring_framework_version,
+            spring_boot_signal=spring_boot_signal,
+            spring_entry_class=spring_entry_class,
             project_type=project_type,
             multi_module=modules.multi_module,
             modules=modules.modules,
@@ -133,7 +162,7 @@ class ProjectAnalyzer:
             has_src_main=has_src_main,
             has_src_test=has_src_test,
             has_tests=has_src_test,
-            java_files=file_utils.find_files(project_root, ".java"),
+            java_files=java_files,
         )
 
     @staticmethod

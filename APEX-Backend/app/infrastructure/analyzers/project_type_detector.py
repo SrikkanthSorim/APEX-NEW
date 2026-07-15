@@ -22,10 +22,16 @@ class ProjectTypeDetector:
         build_tool_supported: bool,
         spring_boot_version: str | None,
         dependencies: Iterable[Dependency],
+        *,
+        spring_boot_signal: bool = False,
     ) -> str:
         deps = list(dependencies)
 
-        if spring_boot_version or self._has(deps, group="org.springframework.boot"):
+        if (
+            spring_boot_version
+            or spring_boot_signal
+            or self._has(deps, group="org.springframework.boot")
+        ):
             return SPRING_BOOT
 
         if self._has(deps, artifact_contains="spring-webmvc") or self._has(

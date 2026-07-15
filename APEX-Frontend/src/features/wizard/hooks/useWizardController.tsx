@@ -3838,6 +3838,25 @@ export function useWizardController() {
     step,
   ]);
 
+  // Never let a "Spring -> Spring Boot" selection survive into a newly
+  // analyzed repository that isn't eligible for it -- e.g. the user picked it
+  // for a previous repo, then connected a different (non-Spring, or already
+  // Spring Boot) one. repoAnalysis is reset to null on every repo change (see
+  // resetDiscoverySelectionState), so this only prunes once the *new*
+  // analysis has actually completed and reports ineligibility.
+  useEffect(() => {
+    if (!repoAnalysis) return;
+    const eligibility = repoAnalysis.spring_boot_eligibility;
+    const eligible = Boolean(
+      eligibility?.springBootConversionEligible || eligibility?.springBootUpgradeEligible
+    );
+    if (!eligible) {
+      setSelectedConversions((prev) =>
+        prev.includes("spring_boot") ? prev.filter((item) => item !== "spring_boot") : prev
+      );
+    }
+  }, [repoAnalysis, setSelectedConversions]);
+
   useEffect(() => {
     if (step !== 3 || !repoAnalysis || !detectedSourceVersionForTargets || availableTargetVersions.length === 0) {
       setVersionRecommendation(null);

@@ -1014,11 +1014,11 @@ export function MigrationUnitTestSection({
 }: MigrationUnitTestSectionProps) {
   const functionalTesting = migrationJob.test_pipeline?.functional_testing ?? (migrationJob as any)?.functional_pipeline ?? null;
   const functionalTools = functionalTesting?.recommended_tools ?? [];
-  const functionalGeneratedFiles = functionalTesting?.generated_files ?? [];
+  const functionalGeneratedFiles: string[] = functionalTesting?.generated_files ?? [];
   const functionalRunnerCommands = functionalTesting?.runner_commands ?? [];
   const functionalExecution = functionalTesting?.execution ?? null;
   const functionalRunners = functionalExecution?.runners ?? [];
-  const functionalTestCases = functionalTesting?.test_cases ?? [];
+  const functionalTestCases: Array<Record<string, any>> = functionalTesting?.test_cases ?? [];
 
   // Config/scaffolding files to hide from the report list (still included in ZIP download)
   const CONFIG_FILE_NAMES = new Set([

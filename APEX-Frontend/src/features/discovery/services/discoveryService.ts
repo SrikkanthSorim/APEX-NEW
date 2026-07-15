@@ -1,7 +1,13 @@
 import { performRequest, requestJson, ABSOLUTE_URL_PATTERN } from "@/services/http/client";
 import { APP_BASE_URL } from "@/services/config/env";
 import type { RepoFilesResponse, FileContentResponse } from "@/features/connect/services/connectService";
-import type { DependencyInfo, RepoAnalysis, MicroserviceEligibilityResult, RepoFile } from "@/shared/types/domain";
+import type {
+  DependencyInfo,
+  RepoAnalysis,
+  MicroserviceEligibilityResult,
+  RepoFile,
+  SpringBootConversionEligibility,
+} from "@/shared/types/domain";
 
 /* -------------------------------------------------------------------------- */
 /* Discovery stage (Step 2) — POST /api/v1/discovery/{jobId}                    */
@@ -36,6 +42,16 @@ export interface DiscoveryProject {
   frontend?: { detected: boolean; type: string; path: string | null; packageManager: string | null };
   detectedFiles?: { pomXml: boolean; buildGradle: boolean; buildGradleKts: boolean; packageJson: boolean };
   sourceLayout?: { hasSrcMain: boolean; hasSrcTest: boolean };
+  springFrameworkVersion?: string | null;
+  springEntryClass?: string | null;
+  javaMigrationEligible?: boolean;
+  javaMigrationReason?: string;
+  springDetected?: boolean;
+  springBootDetected?: boolean;
+  springBootConversionEligible?: boolean;
+  springBootUpgradeEligible?: boolean;
+  eligibilityReason?: string;
+  springBootConversion?: SpringBootConversionEligibility;
 }
 
 export interface DiscoveryResponse {
@@ -91,6 +107,23 @@ function normalizeJavaVersion(version: string | null | undefined): string | null
 export function mapDiscoveryToRepoAnalysis(response: DiscoveryResponse): RepoAnalysis {
   const { repository, project } = response;
   const javaVersion = normalizeJavaVersion(project.currentJavaVersion);
+  const springBootEligibility: SpringBootConversionEligibility | undefined =
+    project.springBootConversion ??
+    (typeof project.javaMigrationEligible === "boolean"
+      ? {
+          repositoryAnalyzed: true,
+          javaMigrationEligible: project.javaMigrationEligible,
+          javaMigrationReason: project.javaMigrationReason ?? "",
+          springDetected: Boolean(project.springDetected),
+          springBootDetected: Boolean(project.springBootDetected),
+          springVersion: project.springFrameworkVersion ?? null,
+          springBootVersion: project.springBootVersion ?? null,
+          buildTool: project.buildTool,
+          springBootConversionEligible: Boolean(project.springBootConversionEligible),
+          springBootUpgradeEligible: Boolean(project.springBootUpgradeEligible),
+          eligibilityReason: project.eligibilityReason ?? "",
+        }
+      : undefined);
   const dependencies: DependencyInfo[] = (project.dependencies ?? []).map((dep) => ({
     group_id: dep.groupId,
     artifact_id: dep.artifactId,
@@ -119,6 +152,7 @@ export function mapDiscoveryToRepoAnalysis(response: DiscoveryResponse): RepoAna
       has_src_main: Boolean(project.sourceLayout?.hasSrcMain),
       has_src_test: Boolean(project.sourceLayout?.hasSrcTest),
     },
+    spring_boot_eligibility: springBootEligibility,
   };
 }
 

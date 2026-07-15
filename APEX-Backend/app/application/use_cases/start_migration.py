@@ -35,7 +35,12 @@ from app.infrastructure.migration_engine.automated_migration_runner import (
 )
 from app.infrastructure.migration_engine.change_analyzer import ChangeAnalysis, ChangeAnalyzer
 from app.infrastructure.migration_engine.gradle_buildscript_repair import GradleBuildscriptRepair
-from app.infrastructure.migration_engine.recipe_mapper import ExtraRecipe, load_catalog, recipe_entry_name
+from app.infrastructure.migration_engine.recipe_mapper import (
+    ExtraRecipe,
+    _parse_major,
+    load_catalog,
+    recipe_entry_name,
+)
 from app.infrastructure.persistence.job_repository import JobRepository
 from app.infrastructure.quality_gates.quality_gate_runner import QualityGateRunner
 from app.infrastructure.workspace.workspace_manager import WorkspaceManager
@@ -105,6 +110,12 @@ class StartMigrationUseCase:
         )
         if not target_java:
             raise MigrationExecutionError("No target Java version selected.")
+        source_major = _parse_major(str(source_java))
+        target_major = _parse_major(str(target_java))
+        if source_major is not None and target_major is not None and target_major <= source_major:
+            raise MigrationExecutionError(
+                "Target Java version must be higher than the detected/source Java version."
+            )
 
         conversion_types = SaveMigrationConfigUseCase._normalize_conversion_types(
             config.get("conversionTypes")
