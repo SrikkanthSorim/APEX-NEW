@@ -1,0 +1,11 @@
+{
+  "ticket_id": "ticket-515bb3efbf5a",
+  "created_at": "2026-07-13T09:48:11.983396+00:00",
+  "status": "received",
+  "name": "abc",
+  "email": "pavithrabindu2003@gmail.com",
+  "subject": "def",
+  "message": "asdf",
+  "category": "migration_error",
+  "job_id": "job_2529c65a5d42"
+}

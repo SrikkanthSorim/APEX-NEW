@@ -1,0 +1,99 @@
+{
+  "recipeArtifacts": {
+    "java": "org.openrewrite.recipe:rewrite-migrate-java:${rewrite_migrate_java_version}",
+    "spring": "org.openrewrite.recipe:rewrite-spring:${rewrite_spring_version}",
+    "dependencies": "org.openrewrite.recipe:rewrite-java-dependencies:${rewrite_java_dependencies_version}",
+    "testing": "org.openrewrite.recipe:rewrite-testing-frameworks:${rewrite_testing_frameworks_version}",
+    "core": ""
+  },
+  "cleanupRecipes": [
+    {
+      "id": "remove-unused-imports",
+      "recipe": "org.openrewrite.java.RemoveUnusedImports",
+      "artifact": "core"
+    },
+    {
+      "id": "order-imports",
+      "recipe": "org.openrewrite.java.OrderImports",
+      "artifact": "core"
+    }
+  ],
+  "javaUpgradeRecipes": [
+    {
+      "minTarget": 21,
+      "recipe": "org.openrewrite.java.migrate.UpgradeToJava21",
+      "artifact": "java"
+    },
+    {
+      "minTarget": 17,
+      "recipe": "org.openrewrite.java.migrate.UpgradeToJava17",
+      "artifact": "java"
+    },
+    {
+      "minTarget": 11,
+      "recipe": "org.openrewrite.java.migrate.UpgradeToJava11",
+      "artifact": "java"
+    }
+  ],
+  "conditionalRecipes": [
+    {
+      "id": "jakarta-ee",
+      "whenConversion": ["jakarta", "javax_to_jakarta", "javax-jakarta", "javax_to_jakarta_ee", "jakarta_migration"],
+      "recipe": "org.openrewrite.java.migrate.jakarta.JavaxMigrationToJakarta",
+      "artifact": "java"
+    },
+    {
+      "id": "junit4-to-5",
+      "whenFramework": ["junit"],
+      "whenConversion": ["test_migration", "junit4_to_5", "junit4-to-5", "junit"],
+      "recipe": "org.openrewrite.java.testing.junit5.JUnit5BestPractices",
+      "artifact": "testing"
+    }
+  ],
+  "springBootRecipeLadder": {
+    "description": "OpenRewrite's own per-minor-version Spring Boot upgrade recipes, newest first. The highest entry compatible with the detected current version and the target Java major is selected at run time; no Spring Boot *version number* is ever pinned here.",
+    "legacy": [
+      "org.openrewrite.java.spring.boot2.UpgradeSpringBoot_2_7"
+    ],
+    "jakarta": [
+      "org.openrewrite.java.spring.boot3.UpgradeSpringBoot_3_5",
+      "org.openrewrite.java.spring.boot3.UpgradeSpringBoot_3_4",
+      "org.openrewrite.java.spring.boot3.UpgradeSpringBoot_3_3",
+      "org.openrewrite.java.spring.boot3.UpgradeSpringBoot_3_2",
+      "org.openrewrite.java.spring.boot3.UpgradeSpringBoot_3_1",
+      "org.openrewrite.java.spring.boot3.UpgradeSpringBoot_3_0"
+    ],
+    "artifact": "spring",
+    "whenFramework": ["spring-boot"],
+    "jakartaMinTarget": 17
+  },
+  "dependencyCurrencyGroups": {
+    "description": "Frameworks whose direct dependencies get a safe patch-level currency bump via a generic OpenRewrite recipe. No version numbers here - OpenRewrite resolves the actual version dynamically (newVersion pattern) against the real repository at run time.",
+    "artifact": "dependencies",
+    "recipe": "org.openrewrite.java.dependencies.UpgradeDependencyVersion",
+    "newVersionPattern": "latest.patch",
+    "frameworks": {
+      "hibernate": ["org.hibernate", "org.hibernate.orm"],
+      "lombok": ["org.projectlombok"],
+      "junit": ["org.junit.jupiter", "junit"]
+    }
+  },
+  "errorSignalRecipes": [
+    {
+      "id": "residual-javax-symbols",
+      "pattern": "package\\s+javax\\.(persistence|servlet|annotation|validation|ws\\.rs|xml\\.bind)|cannot find symbol.*javax\\.",
+      "recipe": "org.openrewrite.java.migrate.jakarta.JavaxMigrationToJakarta",
+      "artifact": "java",
+      "reason": "Build still references javax.* after the first pass; forcing the javax->jakarta migration recipe."
+    },
+    {
+      "id": "unresolved-dependency-symbol",
+      "pattern": "package\\s+([\\w.]+)\\s+does not exist|cannot find symbol[\\s\\S]{0,80}?class\\s+\\w+[\\s\\S]{0,40}?package\\s+([\\w.]+)",
+      "recipe": "org.openrewrite.java.dependencies.UpgradeDependencyVersion",
+      "artifact": "dependencies",
+      "newVersionPattern": "latest.release",
+      "groupFromMatch": true,
+      "reason": "Unresolved symbol from a package that looks dependency-related; bumping that dependency group to its latest release."
+    }
+  ]
+}

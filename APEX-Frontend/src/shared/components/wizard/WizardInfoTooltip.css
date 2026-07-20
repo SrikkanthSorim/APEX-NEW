@@ -1,0 +1,46 @@
+.ui-info-tooltip-host {
+  position: relative;
+  display: inline-flex;
+}
+
+.ui-info-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background-color: #e2e8f0;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: help;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.ui-info-trigger-light {
+  width: 20px;
+  height: 20px;
+  border-color: #cbd5e1;
+  background-color: #fff;
+  font-size: 12px;
+}
+
+.ui-info-tooltip {
+  display: none !important;
+}
+
+.ui-info-tooltip-host:hover > .ui-info-trigger,
+.ui-info-tooltip-host:focus-within > .ui-info-trigger {
+  background-color: #3b82f6 !important;
+  border-color: #3b82f6 !important;
+  color: #fff !important;
+}
+
+.ui-info-tooltip-host:hover > .ui-info-tooltip,
+.ui-info-tooltip-host:focus-within > .ui-info-tooltip {
+  display: block !important;
+}
