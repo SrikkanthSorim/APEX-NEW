@@ -199,7 +199,7 @@ const DocsPanel: React.FC<DocsPanelProps> = ({ open, onClose, onNavigateToSuppor
           </section>
 
           <section className="docs-section">
-            <h3>OpenRewrite Recipes Executed</h3>
+            <h3>Recipes Executed</h3>
             {renderList(docs.strategy.recipes_executed)}
           </section>
 

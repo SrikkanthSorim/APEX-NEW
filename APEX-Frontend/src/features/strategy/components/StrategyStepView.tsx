@@ -142,7 +142,7 @@ export function StrategyStepView({
         ? "Not Eligible"
         : springBootPathwayStatus === "upgrade"
           ? "Upgrade Available"
-          : "Active";
+          : "Conversion Available";
 
   return (
     <div style={styles.card}>
@@ -323,6 +323,17 @@ export function StrategyStepView({
               ].map((pathway) => {
                 const isActivePathway = selectedConversions.includes(pathway.key);
                 const isDisabledPathway = pathway.disabled;
+                const isSpringBootPathway = pathway.key === "spring_boot";
+                const pathwayBadgeLabel =
+                  isSpringBootPathway && !isDisabledPathway && isActivePathway
+                    ? "Active"
+                    : pathway.badgeLabel;
+                const pathwayBadgeStyle: React.CSSProperties | undefined =
+                  isSpringBootPathway && !isDisabledPathway
+                    ? isActivePathway
+                      ? { backgroundColor: "#22c55e", color: "#ffffff" }
+                      : { backgroundColor: "#fef3c7", color: "#92400e" }
+                    : undefined;
 
                 return (
                   <WizardOptionCard
@@ -346,8 +357,11 @@ export function StrategyStepView({
                     description={pathway.desc}
                     detail={pathway.detail}
                     topRight={
-                      <div className={`wizard-pathway-status${isDisabledPathway ? " is-disabled" : ""}`}>
-                        {pathway.badgeLabel}
+                      <div
+                        className={`wizard-pathway-status${isDisabledPathway ? " is-disabled" : ""}`}
+                        style={pathwayBadgeStyle}
+                      >
+                        {pathwayBadgeLabel}
                       </div>
                     }
                     containerStyle={{

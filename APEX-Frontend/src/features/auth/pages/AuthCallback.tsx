@@ -14,19 +14,19 @@ const AuthCallback: React.FC = () => {
           if (data.access_token) {
             localStorage.setItem("github_token", data.access_token);
             localStorage.setItem("github_user", JSON.stringify(data.user));
-            navigate("/");
+            navigate("/connect");
           } else {
             alert("GitHub login failed: " + (data.error || "Unknown error"));
-            navigate("/");
+            navigate("/connect");
           }
         })
         .catch(() => {
           alert("GitHub login failed: Network error");
-          navigate("/");
+          navigate("/connect");
         });
     } else {
       alert("No code found in URL");
-      navigate("/");
+      navigate("/connect");
     }
   }, [navigate]);
 
