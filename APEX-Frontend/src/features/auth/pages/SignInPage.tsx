@@ -1,10 +1,12 @@
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
-import { FaInfoCircle } from "react-icons/fa";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/shared/components/ui";
+import { ApiError } from "@/services/http/client";
+import { useAuth } from "@/shared/context/AuthContext";
 import AuthLayout from "../components/AuthLayout";
 import SocialAuthButtons from "../components/SocialAuthButtons";
 import PasswordInput from "../components/PasswordInput";
+import { signIn } from "../services/authService";
 import { useAuthForm, type FormErrors } from "../hooks/useAuthForm";
 import "../auth.css";
 
@@ -32,26 +34,46 @@ function validateSignIn(values: SignInValues): FormErrors<SignInValues> {
 }
 
 const SignInPage: React.FC = () => {
-  const [showNotice, setShowNotice] = useState(false);
+  const navigate = useNavigate();
+  const { login } = useAuth();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
 
   const { values, errors, setField, handleSubmit } = useAuthForm<SignInValues>({
     initialValues: { email: "", password: "" },
     validate: validateSignIn,
-    onValid: () => {
-      // TODO: replace with a real POST /auth/signin call once the backend endpoint
-      // exists, then call AuthContext.login(user) on success.
-      setShowNotice(true);
+    onValid: async (formValues) => {
+      if (isSubmitting) return; // guards a double-click landing two requests
+
+      setApiError(null);
+      setIsSubmitting(true);
+      try {
+        const response = await signIn({
+          email: formValues.email.trim(),
+          password: formValues.password,
+        });
+        login({ name: response.user.fullName, email: response.user.email });
+        navigate("/connect");
+      } catch (err) {
+        if (err instanceof ApiError) {
+          // The backend's own message is already safe to show verbatim for
+          // both cases: "Invalid email or password." (401 — same wording
+          // whether the email is unknown or the password is wrong, so this
+          // never reveals which one happened) and the 403 disabled-account
+          // message.
+          setApiError(err.message || "Sign in failed. Please try again.");
+        } else {
+          setApiError("Unable to reach the server. Check your connection and try again.");
+        }
+      } finally {
+        setIsSubmitting(false);
+      }
     },
   });
 
   return (
     <AuthLayout title="Welcome Back!" subtitle="Sign in to continue your migration">
-      {showNotice && (
-        <div className="auth-notice">
-          <FaInfoCircle style={{ marginTop: 2, flexShrink: 0 }} />
-          <span>Your details look good. Sign-in isn&apos;t connected to a backend yet — this form is ready for future API integration.</span>
-        </div>
-      )}
+      {apiError && <div className="auth-notice auth-notice--error">{apiError}</div>}
 
       <form className="auth-form" onSubmit={handleSubmit} noValidate>
         <div className="auth-field">
@@ -67,6 +89,7 @@ const SignInPage: React.FC = () => {
             value={values.email}
             onChange={(e) => setField("email", e.target.value)}
             autoComplete="email"
+            disabled={isSubmitting}
           />
           {errors.email && <span className="auth-error-text">{errors.email}</span>}
         </div>
@@ -79,6 +102,7 @@ const SignInPage: React.FC = () => {
           placeholder="Enter your password"
           error={errors.password}
           autoComplete="current-password"
+          disabled={isSubmitting}
         />
 
         <div className="auth-row-between">
@@ -93,7 +117,7 @@ const SignInPage: React.FC = () => {
           </button>
         </div>
 
-        <Button type="submit" variant="primary" fullWidth>
+        <Button type="submit" variant="primary" fullWidth loading={isSubmitting}>
           Sign In
         </Button>
       </form>

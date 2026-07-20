@@ -378,3 +378,85 @@ class RepositoryFileNotTextError(RepositoryBrowseError):
         message: str = "This file can't be previewed as text.",
     ) -> None:
         super().__init__(message)
+
+
+# --------------------------------------------------------------------------- #
+# Authentication
+# --------------------------------------------------------------------------- #
+
+
+class AuthError(Exception):
+    """Base class for all authentication failures.
+
+    Attributes
+    ----------
+    status:
+        Stable machine-readable status returned to the frontend.
+    message:
+        Clean, user-friendly message. Never exposes technical internals
+        (no stack traces, database errors, or secrets).
+    http_status:
+        HTTP status code the API layer should respond with.
+    """
+
+    status: str = "AUTH_ERROR"
+    http_status: int = 400
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.message = message
+
+
+class EmailAlreadyRegisteredError(AuthError):
+    """Signup was attempted with an email that already has an account."""
+
+    status = "EMAIL_ALREADY_REGISTERED"
+    http_status = 409
+
+    def __init__(self, message: str = "An account with this email already exists.") -> None:
+        super().__init__(message)
+
+
+class InvalidCredentialsError(AuthError):
+    """Login failed: unknown email OR wrong password.
+
+    Deliberately the SAME error for both cases — the caller must never be
+    able to tell which one happened (prevents attackers from discovering
+    which emails are registered).
+    """
+
+    status = "INVALID_CREDENTIALS"
+    http_status = 401
+
+    def __init__(self, message: str = "Invalid email or password.") -> None:
+        super().__init__(message)
+
+
+class AccountDisabledError(AuthError):
+    """The account exists and the password was correct, but is_active is False."""
+
+    status = "ACCOUNT_DISABLED"
+    http_status = 403
+
+    def __init__(self, message: str = "This account has been disabled. Please contact support.") -> None:
+        super().__init__(message)
+
+
+class NotAuthenticatedError(AuthError):
+    """No valid access token was presented (missing/expired/malformed cookie)."""
+
+    status = "NOT_AUTHENTICATED"
+    http_status = 401
+
+    def __init__(self, message: str = "Authentication required.") -> None:
+        super().__init__(message)
+
+
+class InvalidRefreshTokenError(AuthError):
+    """The refresh token is missing, malformed, expired, revoked, or reused."""
+
+    status = "INVALID_REFRESH_TOKEN"
+    http_status = 401
+
+    def __init__(self, message: str = "Refresh token is invalid or has expired.") -> None:
+        super().__init__(message)

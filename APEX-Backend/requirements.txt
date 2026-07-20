@@ -4,3 +4,10 @@ httpx>=0.27,<1.0
 pydantic>=2.5,<3.0
 pydantic-settings>=2.1,<3.0
 python-dotenv>=1.0,<2.0
+
+# --- Authentication (email/password + JWT cookies) --------------------------
+sqlalchemy>=2.0,<3.0
+psycopg[binary]>=3.1,<4.0
+pwdlib[argon2]>=0.2,<1.0
+PyJWT>=2.8,<3.0
+email-validator>=2.1,<3.0

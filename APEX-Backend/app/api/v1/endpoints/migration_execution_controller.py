@@ -7,11 +7,15 @@ logic lives here.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Body
+from fastapi import APIRouter, Body, Depends
 from fastapi.responses import JSONResponse
+from sqlalchemy.orm import Session
 
+from app.api.deps import get_current_user, verify_job_ownership
 from app.application.pipelines.migration_execution_pipeline import MigrationExecutionPipeline
 from app.core.exceptions import MigrationConfigError, MigrationExecutionError, MigrationJobNotFoundError
+from app.infrastructure.persistence.database import get_db
+from app.infrastructure.persistence.models import User
 from app.schemas.migration_execution_schema import MigrationStartRequest
 
 router = APIRouter(tags=["migration"])
@@ -39,7 +43,10 @@ def _not_found_response() -> JSONResponse:
 async def start_migration(
     job_id: str,
     payload: MigrationStartRequest | None = Body(default=None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ) -> JSONResponse:
+    verify_job_ownership(db, job_id, current_user)
     request = payload.model_dump() if payload else None
     try:
         result = _pipeline.start(job_id, request)
@@ -52,7 +59,12 @@ async def start_migration(
 
 
 @router.get("/migration/{job_id}/summary", summary="Migration status summary (polled).")
-async def migration_summary(job_id: str) -> JSONResponse:
+async def migration_summary(
+    job_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> JSONResponse:
+    verify_job_ownership(db, job_id, current_user)
     try:
         return JSONResponse(status_code=200, content=_pipeline.get_summary(job_id))
     except MigrationJobNotFoundError:
@@ -60,7 +72,12 @@ async def migration_summary(job_id: str) -> JSONResponse:
 
 
 @router.get("/migration/{job_id}/detail", summary="Full migration result.")
-async def migration_detail(job_id: str) -> JSONResponse:
+async def migration_detail(
+    job_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> JSONResponse:
+    verify_job_ownership(db, job_id, current_user)
     try:
         return JSONResponse(status_code=200, content=_pipeline.get_detail(job_id))
     except MigrationJobNotFoundError:
@@ -68,7 +85,12 @@ async def migration_detail(job_id: str) -> JSONResponse:
 
 
 @router.get("/migration/{job_id}/logs", summary="Migration log lines.")
-async def migration_logs(job_id: str) -> JSONResponse:
+async def migration_logs(
+    job_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> JSONResponse:
+    verify_job_ownership(db, job_id, current_user)
     try:
         return JSONResponse(status_code=200, content=_pipeline.get_logs(job_id))
     except MigrationJobNotFoundError:
@@ -76,7 +98,12 @@ async def migration_logs(job_id: str) -> JSONResponse:
 
 
 @router.get("/migration/{job_id}/fossa", summary="FOSSA dependency/license scan results.")
-async def migration_fossa(job_id: str) -> JSONResponse:
+async def migration_fossa(
+    job_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> JSONResponse:
+    verify_job_ownership(db, job_id, current_user)
     try:
         return JSONResponse(status_code=200, content=_pipeline.get_fossa(job_id))
     except MigrationJobNotFoundError:

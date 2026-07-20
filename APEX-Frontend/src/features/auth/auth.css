@@ -197,6 +197,12 @@
   margin-bottom: 18px;
 }
 
+.auth-notice--error {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
 .auth-success {
   text-align: center;
   padding: 8px 0 4px;

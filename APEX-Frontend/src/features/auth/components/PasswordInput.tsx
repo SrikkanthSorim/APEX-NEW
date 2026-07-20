@@ -10,6 +10,7 @@ export interface PasswordInputProps {
   placeholder?: string;
   error?: string;
   autoComplete?: string;
+  disabled?: boolean;
 }
 
 const PasswordInput: React.FC<PasswordInputProps> = ({
@@ -21,6 +22,7 @@ const PasswordInput: React.FC<PasswordInputProps> = ({
   placeholder,
   error,
   autoComplete = "new-password",
+  disabled = false,
 }) => {
   const [visible, setVisible] = useState(false);
   const inputId = useId();
@@ -42,6 +44,7 @@ const PasswordInput: React.FC<PasswordInputProps> = ({
           onBlur={onBlur}
           placeholder={placeholder}
           autoComplete={autoComplete}
+          disabled={disabled}
           aria-invalid={Boolean(error)}
           aria-describedby={error ? errorId : undefined}
         />
@@ -51,6 +54,7 @@ const PasswordInput: React.FC<PasswordInputProps> = ({
           onClick={() => setVisible((v) => !v)}
           aria-label={visible ? "Hide password" : "Show password"}
           tabIndex={-1}
+          disabled={disabled}
         >
           {visible ? <FaEyeSlash size={15} /> : <FaEye size={15} />}
         </button>

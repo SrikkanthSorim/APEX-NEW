@@ -7,16 +7,20 @@ lives here.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, Query
+from fastapi import APIRouter, Body, Depends, Query
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
+from sqlalchemy.orm import Session
 
+from app.api.deps import get_current_user, verify_job_ownership
 from app.application.pipelines.discovery_pipeline import DiscoveryPipeline
 from app.application.use_cases.assess_microservice_eligibility import (
     AssessMicroserviceEligibilityUseCase,
 )
 from app.application.use_cases.browse_repository import RepositoryFileBrowser
 from app.core.exceptions import DiscoveryError, RepositoryBrowseError
+from app.infrastructure.persistence.database import get_db
+from app.infrastructure.persistence.models import User
 from app.schemas.discovery_schema import DiscoveryRequest, DiscoveryResponse
 
 router = APIRouter(tags=["discovery"])
@@ -34,11 +38,14 @@ _microservice_use_case = AssessMicroserviceEligibilityUseCase()
 async def run_discovery(
     job_id: str,
     payload: DiscoveryRequest | None = Body(default=None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ) -> JSONResponse:
     """Clone the connected repository and analyze the project.
 
     Read-only after cloning — no migration, build, or file modification happens.
     """
+    verify_job_ownership(db, job_id, current_user)
     token = payload.github_token if payload else None
     try:
         outcome = await run_in_threadpool(_pipeline.run, job_id, token)
@@ -62,6 +69,8 @@ async def run_discovery(
 async def list_discovery_files(
     job_id: str,
     path: str = Query("", description="Folder path relative to the repository root."),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ) -> JSONResponse:
     """Lazily list one directory level of the job's already-cloned repo.
 
@@ -69,6 +78,7 @@ async def list_discovery_files(
     clone Discovery already made, so it works for large repos without extra
     round trips (only the currently expanded folder is listed).
     """
+    verify_job_ownership(db, job_id, current_user)
     try:
         entries = await run_in_threadpool(_file_browser.list_directory, job_id, path)
     except RepositoryBrowseError as exc:
@@ -97,7 +107,10 @@ async def list_discovery_files(
 async def get_discovery_file_content(
     job_id: str,
     path: str = Query(..., description="File path relative to the repository root."),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ) -> JSONResponse:
+    verify_job_ownership(db, job_id, current_user)
     try:
         result = await run_in_threadpool(_file_browser.read_file, job_id, path)
     except RepositoryBrowseError as exc:
@@ -121,13 +134,18 @@ async def get_discovery_file_content(
     "/discovery/{job_id}/microservice-eligibility",
     summary="Assess microservice eligibility from the cloned repository (Discovery workspace).",
 )
-async def get_microservice_eligibility(job_id: str) -> JSONResponse:
+async def get_microservice_eligibility(
+    job_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> JSONResponse:
     """Real static analysis over the job's cloned repo.
 
     Detects controllers/services/repositories/entities, groups them into
     per-controller business chunks via their actual dependency graph, and
     scores each chunk. No re-cloning, no GitHub API calls, no mock data.
     """
+    verify_job_ownership(db, job_id, current_user)
     try:
         result = await run_in_threadpool(_microservice_use_case.execute, job_id)
     except RepositoryBrowseError as exc:
