@@ -249,6 +249,11 @@ class StartMigrationUseCase:
             store.append_logs([f"Migration completed. Published to {target_repo}"])
             logger.info("Migration completed for job %s -> %s", job_id, target_repo)
 
+            # Refresh the chatbot's vector index so it reflects this migration's
+            # outcome (modified files, code changes, dependency upgrades). Best
+            # effort: indexing must never fail a completed migration.
+            self._reindex_knowledge_base(job_id)
+
         except MigrationExecutionError as exc:
             self._fail(store, job_id, exc.message)
         except Exception as exc:  # noqa: BLE001 - report any unexpected failure cleanly
@@ -471,12 +476,14 @@ class StartMigrationUseCase:
                 "version; no import or source code changes were required."
             )
         elif result.recipes:
+            # Do not expose internal transformation identifiers to end users.
             parts.append(
-                f"Executed {len(result.recipes)} Migration recipe(s): {', '.join(result.recipes)}."
+                f"Applied {len(result.recipes)} automated modernization transformation(s) "
+                f"to the project."
             )
         elif result.used_fallback:
             parts.append(
-                "Applied deterministic build-configuration fallback (Migration did not run)."
+                "Applied deterministic build-configuration fallback."
             )
 
         if result.spring_conversion_requested:
@@ -678,6 +685,27 @@ class StartMigrationUseCase:
                 "before automated migration can proceed."
             )
         return "Migration failed. See logs for details."
+
+    @staticmethod
+    def _reindex_knowledge_base(job_id: str) -> None:
+        """Re-index this job's repository into the chatbot's vector store.
+
+        Runs after a successful migration so the "JavaApex Assistant" can answer
+        questions about the migration outcome. Best effort: any failure is logged
+        and swallowed so it can never affect the completed migration. Imported
+        lazily to keep the embedding model out of the migration import path.
+        """
+        try:
+            from app.application.use_cases.index_repository import IndexRepositoryUseCase
+
+            outcome = IndexRepositoryUseCase().index_by_job_id(job_id)
+            logger.info(
+                "Re-indexed knowledge base for job %s (%d chunks).",
+                job_id,
+                outcome.chunk_count,
+            )
+        except Exception:  # noqa: BLE001 - indexing must never fail the migration
+            logger.warning("Failed to re-index knowledge base for job %s.", job_id, exc_info=True)
 
     @staticmethod
     def _fail(store: MigrationReportStore, job_id: str, message: str) -> None:

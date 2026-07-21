@@ -7,7 +7,7 @@ export const SUPPORT_FAQ: FaqEntry[] = [
   {
     question: "How long does a migration take?",
     answer:
-      "It depends on the repository size and the number of conversions selected. Most single-module Spring Boot projects complete within a few minutes of OpenRewrite execution plus a build validation pass.",
+      "It depends on the repository size and the number of conversions selected. Most single-module Spring Boot projects complete within a few minutes of automated modernization plus a build validation pass.",
   },
   {
     question: "Is my source code or GitHub token stored?",
@@ -21,7 +21,7 @@ export const SUPPORT_FAQ: FaqEntry[] = [
   {
     question: "What if the post-migration build fails?",
     answer:
-      "The platform automatically diagnoses common build failures and retries with adjusted recipes, up to a bounded number of attempts. If it still fails, the Result page and this Support form's \"Migration Error Help\" tab both explain what to check.",
+      "The platform automatically diagnoses common build failures and retries with adjusted transformations, up to a bounded number of attempts. If it still fails, the Result page and this Support form's \"Migration Error Help\" tab both explain what to check.",
   },
 ];
 
@@ -36,7 +36,7 @@ export const TROUBLESHOOTING_GUIDE: FaqEntry[] = [
   },
   {
     question: "Migration seems stuck",
-    answer: "Open the Result page to check live progress and logs. Large repositories with many recipes can take longer than expected — the job continues running in the background.",
+    answer: "Open the Result page to check live progress and logs. Large repositories with many transformations can take longer than expected — the job continues running in the background.",
   },
 ];
 
@@ -44,12 +44,12 @@ export const MIGRATION_ERROR_HELP: FaqEntry[] = [
   {
     question: "\"BUILD FAILED\" after migration",
     answer:
-      "Check the build modernization steps and retry attempts shown in the migration report — the platform records the root cause it diagnosed and which recipes it added on each retry.",
+      "Check the build modernization steps and retry attempts shown in the migration report — the platform records the root cause it diagnosed and which transformations it added on each retry.",
   },
   {
     question: "Dependency resolution errors",
     answer:
-      "Review the Dependency Changes section in Docs — a dependency upgrade pinned by an OpenRewrite recipe may conflict with another BOM/version already declared in the project.",
+      "Review the Dependency Changes section in Docs — a dependency upgrade pinned by the migration may conflict with another BOM/version already declared in the project.",
   },
   {
     question: "Still stuck?",

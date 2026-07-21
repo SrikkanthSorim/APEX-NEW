@@ -39,6 +39,16 @@ class IndexRepositoryUseCase:
             raise RepositoryNotFoundForIndexingError("Discovery report has no repository URL.")
 
         chunks = chunker.build_chunks(report)
+
+        # Also index the post-migration outcome (modified files, code changes,
+        # dependency upgrades) when a migration report exists for this job, so
+        # the chatbot can answer questions about what the migration changed.
+        job_id = str(report.get("jobId") or "").strip()
+        if job_id:
+            migration_report = repo_index_locator.find_migration_report_by_job_id(job_id)
+            if migration_report:
+                chunks = chunks + chunker.build_migration_chunks(migration_report)
+
         texts = [c.text for c in chunks]
         vectors = embedder.embed_documents(texts)
 

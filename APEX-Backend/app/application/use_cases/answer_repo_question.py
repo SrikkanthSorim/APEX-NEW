@@ -21,6 +21,7 @@ from app.application.use_cases.index_repository import (
 from app.core.exceptions import RepositoryNotIndexedError
 from app.infrastructure.llm.chat_llm import ChatLLM
 from app.infrastructure.rag import prompt_builder, retriever
+from app.shared import branding
 
 
 @dataclass
@@ -77,10 +78,16 @@ class AnswerRepoQuestionUseCase:
         )
 
     async def stream(self, prepared: PreparedAnswer) -> AsyncIterator[str]:
-        """Yield answer text deltas for a prepared question."""
-        async for delta in prepared.chat.stream_chat(
+        """Yield answer text deltas for a prepared question.
+
+        Deltas are passed through the branding sanitizer as a final guard so no
+        internal tooling / recipe identifier can reach the user even if the model
+        echoes one from its own knowledge.
+        """
+        raw_deltas = prepared.chat.stream_chat(
             prepared.system_prompt, prepared.user_prompt
-        ):
+        )
+        async for delta in branding.sanitize_stream(raw_deltas):
             yield delta
 
     async def answer(

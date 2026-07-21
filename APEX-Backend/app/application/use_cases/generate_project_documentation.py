@@ -19,6 +19,7 @@ from app.core.exceptions import MigrationJobNotFoundError
 from app.infrastructure.persistence.job_repository import JobRepository
 from app.schemas.docs_schema import MigrationStrategySection, ProjectDocsResponse
 from app.schemas.document_schema import TechnicalDocumentRequest
+from app.shared import branding
 
 
 def _e(value: Any) -> str:
@@ -138,7 +139,7 @@ class GenerateProjectDocumentationUseCase:
                 '<section class="page"><div class="page-inner">'
                 "<h2>Migration Strategy</h2>"
                 '<p class="muted">No migration has been run for this project yet. '
-                "Recipes executed, dependency changes, source code changes, and the "
+                "Dependency changes, source code changes, and the "
                 "migration report will appear here once Start Migration completes.</p>"
                 "</div></section>"
             )
@@ -151,10 +152,6 @@ class GenerateProjectDocumentationUseCase:
           ("Build Status", strategy.build_status or "Unknown"),
           ("Build Success", "Yes" if strategy.build_success else "No"),
       ])}
-      <h2>OpenRewrite Recipes Executed</h2>
-      {self._list_or_empty(strategy.recipes_executed)}
-      <h3>Recipe Selection Reasons</h3>
-      {self._list_or_empty(strategy.recipe_selection_reasons)}
       <h2>Dependency Changes</h2>
       {self._list_or_empty(strategy.dependency_upgrades)}
       <h2>Source Code Changes</h2>
@@ -163,7 +160,7 @@ class GenerateProjectDocumentationUseCase:
       <h3>Source File Changes</h3>
       {self._list_or_empty(strategy.source_changes)}
       <h2>Migration Report</h2>
-      <p>{_e(strategy.migration_summary) or '<span class="muted">No migration summary available.</span>'}</p>
+      <p>{_e(branding.sanitize(strategy.migration_summary)) or '<span class="muted">No migration summary available.</span>'}</p>
     </div></section>"""
 
     def _table(self, headers: list[str], rows: list[tuple[Any, ...]]) -> str:

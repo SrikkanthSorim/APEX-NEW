@@ -7,7 +7,7 @@ export const DOCS_FAQ: FaqEntry[] = [
   {
     question: "What does the Java Migration Accelerator do?",
     answer:
-      "It connects to a Java repository, analyzes its build tool, Java version, frameworks, and dependencies, then runs OpenRewrite recipes to modernize the codebase to a target Java version — tracking every recipe executed, dependency change, and source code change along the way.",
+      "It connects to a Java repository, analyzes its build tool, Java version, frameworks, and dependencies, then applies automated modernization transformations to upgrade the codebase to a target Java version — tracking every dependency change and source code change along the way.",
   },
   {
     question: "Where does the data in this Documentation view come from?",
@@ -17,7 +17,7 @@ export const DOCS_FAQ: FaqEntry[] = [
   {
     question: "Why do some sections show a placeholder instead of data?",
     answer:
-      "Migration Strategy, Recipes Executed, Dependency Changes, Source Code Changes, and the Migration Report all depend on Start Migration having completed for this job. Until then, those sections show a short explanation instead of an error.",
+      "Migration Strategy, Dependency Changes, Source Code Changes, and the Migration Report all depend on Start Migration having completed for this job. Until then, those sections show a short explanation instead of an error.",
   },
   {
     question: "Can I download this documentation?",
@@ -48,11 +48,11 @@ export const DOCS_USER_GUIDE: FaqEntry[] = [
   {
     question: "4. Start Migration",
     answer:
-      "OpenRewrite recipes run against the repository. The build is validated afterward, with automatic diagnose-and-retry if it fails.",
+      "Automated modernization transformations run against the repository. The build is validated afterward, with automatic diagnose-and-retry if it fails.",
   },
   {
     question: "5. Result & Docs",
     answer:
-      "Review the migration report, recipes executed, and code changes on the Result page, or open this Documentation panel any time for the same information in one place.",
+      "Review the migration report, dependency changes, and code changes on the Result page, or open this Documentation panel any time for the same information in one place.",
   },
 ];

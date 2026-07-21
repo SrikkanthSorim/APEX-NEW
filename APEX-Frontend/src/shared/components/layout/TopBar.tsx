@@ -56,7 +56,7 @@ const TopBar: React.FC = () => (
       <span style={{ fontSize: 22 }}>☕</span>
     </div>
     <div style={topBarStyles.status}>
-      <span style={topBarStyles.badge}>🔄 OpenRewrite Powered</span>
+      <span style={topBarStyles.badge}>⚡ AI-Powered</span>
       <span>📧 Notifications</span>
       <span style={topBarStyles.online}>✅ API Online</span>
       <span style={topBarStyles.user}>👤 Developer</span>

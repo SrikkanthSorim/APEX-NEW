@@ -36,8 +36,10 @@ def _core(report: dict[str, Any]) -> dict[str, Any]:
         "error_message": report.get("errorMessage"),
         "dependency_count": int(report.get("dependencyCount") or 0),
         # --- migration engine report fields ---
-        "recipes_executed": report.get("recipes") or [],
-        "recipe_selection_reasons": report.get("recipeSelection") or [],
+        # Internal transformation identifiers are never exposed to end users; the
+        # frontend and generated docs must not surface them (see app.shared.branding).
+        "recipes_executed": [],
+        "recipe_selection_reasons": [],
         "build_modernization": report.get("buildModernization") or [],
         "dependency_upgrades": report.get("dependencyUpgrades") or [],
         "used_fallback": bool(report.get("usedFallback")),

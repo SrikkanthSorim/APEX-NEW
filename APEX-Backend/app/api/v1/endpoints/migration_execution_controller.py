@@ -1,6 +1,6 @@
 """Start Migration + polling endpoints.
 
-Thin controller: validates + kicks off the async migration (OpenRewrite + push)
+Thin controller: validates + kicks off the async migration (transform + push)
 and exposes summary/detail/logs for the Result page to poll. No migration or git
 logic lives here.
 """
@@ -34,7 +34,7 @@ def _not_found_response() -> JSONResponse:
 
 @router.post(
     "/migration/{job_id}/start",
-    summary="Start the OpenRewrite migration and publish the result.",
+    summary="Start the migration and publish the result.",
 )
 async def start_migration(
     job_id: str,

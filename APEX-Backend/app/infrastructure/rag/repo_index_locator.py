@@ -35,6 +35,25 @@ def find_report_by_job_id(job_id: str) -> dict[str, Any] | None:
         return None
 
 
+def find_migration_report_by_job_id(job_id: str) -> dict[str, Any] | None:
+    """Read a specific job's migration (execution) report, if present.
+
+    Sibling of the discovery report under ``<jobId>/reports/``. Holds the
+    post-migration outcome (modified files, import/source changes, dependency
+    upgrades, Spring Boot before/after), which is indexed alongside the
+    pre-migration discovery report so the chatbot can answer questions about it.
+    """
+    if not job_id:
+        return None
+    path = settings.storage_dir / job_id / "reports" / "migration-report.json"
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return None
+
+
 def find_latest_report_by_url(repo_url: str) -> dict[str, Any] | None:
     """Return the newest discovery report matching ``repo_url`` (or None)."""
     target = _normalize_url(repo_url)
