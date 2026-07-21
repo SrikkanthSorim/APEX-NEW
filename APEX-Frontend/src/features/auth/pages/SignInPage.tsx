@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/shared/components/ui";
 import { ApiError } from "@/services/http/client";
 import { useAuth } from "@/shared/context/AuthContext";
@@ -8,6 +8,7 @@ import SocialAuthButtons from "../components/SocialAuthButtons";
 import PasswordInput from "../components/PasswordInput";
 import { signIn } from "../services/authService";
 import { useAuthForm, type FormErrors } from "../hooks/useAuthForm";
+import { getOAuthErrorMessage } from "../oauthErrorMessages";
 import "../auth.css";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -36,8 +37,21 @@ function validateSignIn(values: SignInValues): FormErrors<SignInValues> {
 const SignInPage: React.FC = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
+  const [searchParams] = useSearchParams();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
+
+  // The backend redirects back here as `/signin?oauth_error=<code>` when a
+  // Google/GitHub sign-in attempt fails (see app/api/v1/endpoints/auth_controller.py).
+  // Strip the query param immediately so a page refresh doesn't re-show it.
+  useEffect(() => {
+    const oauthErrorCode = searchParams.get("oauth_error");
+    if (oauthErrorCode) {
+      setApiError(getOAuthErrorMessage(oauthErrorCode));
+      navigate("/signin", { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const { values, errors, setField, handleSubmit } = useAuthForm<SignInValues>({
     initialValues: { email: "", password: "" },

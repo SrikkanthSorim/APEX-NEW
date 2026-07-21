@@ -273,6 +273,15 @@
   align-items: center;
 }
 
+.landing-hero-logo {
+  display: block;
+  height: 120px;
+  width: auto;
+  object-fit: contain;
+  margin-top: -32px;
+  margin-bottom: 20px;
+}
+
 .landing-eyebrow {
   display: inline-flex;
   align-items: center;

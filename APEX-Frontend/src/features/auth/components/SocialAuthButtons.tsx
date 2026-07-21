@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useState } from "react";
 import { FaGithub } from "react-icons/fa";
-import { GITHUB_AUTH_LOGIN_URL } from "@/services/config/env";
+import { Button } from "@/shared/components/ui";
+import { GITHUB_AUTH_LOGIN_URL, GOOGLE_AUTH_LOGIN_URL } from "@/services/config/env";
 
 const GoogleIcon: React.FC = () => (
   <svg width="16" height="16" viewBox="0 0 24 24">
@@ -15,35 +16,49 @@ export interface SocialAuthButtonsProps {
   mode: "signin" | "signup";
 }
 
+type Provider = "google" | "github";
+
 const SocialAuthButtons: React.FC<SocialAuthButtonsProps> = ({ mode }) => {
   const verb = mode === "signin" ? "Sign in" : "Sign up";
+  // Set once a provider redirect starts, so a second click (on either
+  // button) can never fire a duplicate redirect while the browser is still
+  // navigating away.
+  const [redirectingTo, setRedirectingTo] = useState<Provider | null>(null);
+
+  const startOAuthRedirect = (provider: Provider, loginUrl: string) => {
+    if (redirectingTo) return;
+    setRedirectingTo(provider);
+    window.location.href = loginUrl;
+  };
 
   return (
     <div className="auth-social-row">
-      <button
+      <Button
         type="button"
-        className="ui-button ui-button--secondary ui-button--md ui-button--full"
-        title="Google sign-in is coming soon"
-        disabled
+        variant="secondary"
+        size="md"
+        fullWidth
+        icon={<GoogleIcon />}
+        loading={redirectingTo === "google"}
+        disabled={redirectingTo !== null && redirectingTo !== "google"}
+        aria-label={`${verb} with Google`}
+        onClick={() => startOAuthRedirect("google", GOOGLE_AUTH_LOGIN_URL)}
       >
-        <span className="ui-button__icon">
-          <GoogleIcon />
-        </span>
-        <span className="ui-button__label">Google</span>
-      </button>
-      <button
+        Google
+      </Button>
+      <Button
         type="button"
-        className="ui-button ui-button--secondary ui-button--md ui-button--full"
-        onClick={() => {
-          window.location.href = GITHUB_AUTH_LOGIN_URL;
-        }}
+        variant="secondary"
+        size="md"
+        fullWidth
+        icon={<FaGithub size={16} />}
+        loading={redirectingTo === "github"}
+        disabled={redirectingTo !== null && redirectingTo !== "github"}
         aria-label={`${verb} with GitHub`}
+        onClick={() => startOAuthRedirect("github", GITHUB_AUTH_LOGIN_URL)}
       >
-        <span className="ui-button__icon">
-          <FaGithub size={16} />
-        </span>
-        <span className="ui-button__label">GitHub</span>
-      </button>
+        GitHub
+      </Button>
     </div>
   );
 };

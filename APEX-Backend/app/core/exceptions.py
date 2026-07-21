@@ -460,3 +460,92 @@ class InvalidRefreshTokenError(AuthError):
 
     def __init__(self, message: str = "Refresh token is invalid or has expired.") -> None:
         super().__init__(message)
+
+
+# --------------------------------------------------------------------------- #
+# OAuth (Google / GitHub social login)
+# --------------------------------------------------------------------------- #
+
+
+class OAuthNotConfiguredError(AuthError):
+    """The requested provider has no client id/secret configured on the server."""
+
+    status = "OAUTH_NOT_CONFIGURED"
+    http_status = 503
+
+    def __init__(self, message: str = "This sign-in method is not available right now.") -> None:
+        super().__init__(message)
+
+
+class OAuthCancelledError(AuthError):
+    """The user declined/cancelled the provider's consent screen."""
+
+    status = "OAUTH_CANCELLED"
+    http_status = 400
+
+    def __init__(self, message: str = "Sign-in was cancelled.") -> None:
+        super().__init__(message)
+
+
+class OAuthStateInvalidError(AuthError):
+    """The `state` callback parameter is missing, unsigned, expired, or for the wrong provider."""
+
+    status = "OAUTH_INVALID_STATE"
+    http_status = 400
+
+    def __init__(
+        self,
+        message: str = "Your sign-in session expired or is invalid. Please try again.",
+    ) -> None:
+        super().__init__(message)
+
+
+class OAuthProviderError(AuthError):
+    """Google/GitHub could not be reached, or returned an unexpected response."""
+
+    status = "OAUTH_PROVIDER_ERROR"
+    http_status = 502
+
+    def __init__(
+        self,
+        message: str = "We couldn't complete sign-in right now. Please try again.",
+    ) -> None:
+        super().__init__(message)
+
+
+class OAuthEmailMissingError(AuthError):
+    """The provider returned no verified email address to identify the user by."""
+
+    status = "OAUTH_EMAIL_MISSING"
+    http_status = 400
+
+    def __init__(
+        self,
+        message: str = (
+            "We couldn't get a verified email from your account. "
+            "Please use a different sign-in method."
+        ),
+    ) -> None:
+        super().__init__(message)
+
+
+class OAuthAccountConflictError(AuthError):
+    """An account with this email already exists and cannot be safely auto-linked.
+
+    Raised when the provider's email is NOT verified (auto-linking to an
+    existing account on an unverified email would let an attacker who
+    merely controls an OAuth app take over any local account by claiming
+    its email address).
+    """
+
+    status = "OAUTH_ACCOUNT_CONFLICT"
+    http_status = 409
+
+    def __init__(
+        self,
+        message: str = (
+            "An account with this email already exists. "
+            "Please sign in with your password instead."
+        ),
+    ) -> None:
+        super().__init__(message)

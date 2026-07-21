@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { FaCheck } from "react-icons/fa";
 import { Button } from "@/shared/components/ui";
 import { ApiError } from "@/services/http/client";
@@ -8,6 +8,7 @@ import SocialAuthButtons from "../components/SocialAuthButtons";
 import PasswordInput from "../components/PasswordInput";
 import { signUp } from "../services/authService";
 import { useAuthForm, type FormErrors } from "../hooks/useAuthForm";
+import { getOAuthErrorMessage } from "../oauthErrorMessages";
 import "../auth.css";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -65,9 +66,22 @@ function validateSignUp(values: SignUpValues): FormErrors<SignUpValues> {
 
 const SignUpPage: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [submitted, setSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
+
+  // The backend redirects back here as `/signin?oauth_error=<code>` (see
+  // app/api/v1/endpoints/auth_controller.py); a user can also land on Sign Up
+  // with the same param if they started the OAuth flow from this page.
+  useEffect(() => {
+    const oauthErrorCode = searchParams.get("oauth_error");
+    if (oauthErrorCode) {
+      setApiError(getOAuthErrorMessage(oauthErrorCode));
+      navigate("/signup", { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const { values, errors, setField, handleSubmit } = useAuthForm<SignUpValues>({
     initialValues: { fullName: "", email: "", password: "", confirmPassword: "" },

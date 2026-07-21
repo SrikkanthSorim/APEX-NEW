@@ -174,6 +174,33 @@ class Settings(BaseSettings):
     # "development" or "production" — controls the auth cookies' Secure flag.
     environment: str = "development"
 
+    # --- OAuth (Google / GitHub social login) ---------------------------------
+    # Identity-only login (see app/infrastructure/oauth/). Deliberately separate
+    # from GITHUB_TOKEN/GITHUB_TARGET_TOKEN above, which are unrelated to login
+    # and used only for the Connect stage's repository read/publish access.
+    google_client_id: str = Field(default="", alias="GOOGLE_CLIENT_ID")
+    google_client_secret: str = Field(default="", alias="GOOGLE_CLIENT_SECRET")
+    google_redirect_uri: str = Field(
+        default="http://localhost:8000/api/auth/google/callback", alias="GOOGLE_REDIRECT_URI"
+    )
+    github_client_id: str = Field(default="", alias="GITHUB_CLIENT_ID")
+    github_client_secret: str = Field(default="", alias="GITHUB_CLIENT_SECRET")
+    github_redirect_uri: str = Field(
+        default="http://localhost:8000/api/auth/github/callback", alias="GITHUB_REDIRECT_URI"
+    )
+    # How long a signed OAuth `state` (and, for Google, the PKCE code_verifier
+    # cookie) stays valid — the window the user has to complete the provider's
+    # consent screen before the login attempt must be restarted.
+    oauth_state_expire_seconds: int = 600
+
+    @property
+    def google_oauth_configured(self) -> bool:
+        return bool(self.google_client_id and self.google_client_secret)
+
+    @property
+    def github_oauth_configured(self) -> bool:
+        return bool(self.github_client_id and self.github_client_secret)
+
     @property
     def is_production(self) -> bool:
         return self.environment.strip().lower() == "production"

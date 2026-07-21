@@ -7,8 +7,10 @@ For a Java/Spring developer: this module is the equivalent of a small
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import logging
+import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
@@ -140,3 +142,59 @@ def hash_refresh_token(raw_token: str) -> str:
     the same value twice, making a lookup-by-hash impossible.
     """
     return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
+
+# --------------------------------------------------------------------------- #
+# OAuth (Google / GitHub social login): state (CSRF) tokens + PKCE
+# --------------------------------------------------------------------------- #
+
+_OAUTH_STATE_TOKEN_TYPE = "oauth_state"
+
+
+def create_oauth_state_token(provider: str) -> str:
+    """Build a short-lived, self-verifying `state` value for an OAuth login.
+
+    Sent as the `state` query parameter to Google/GitHub and echoed straight
+    back to our callback — signing it here (instead of using a server-side
+    session store) is what lets the callback later prove the request came
+    from an authorization flow *we* started, for *this* provider, within the
+    last `settings.oauth_state_expire_seconds`, without persisting anything.
+    """
+    now = datetime.now(timezone.utc)
+    payload: dict[str, Any] = {
+        "type": _OAUTH_STATE_TOKEN_TYPE,
+        "provider": provider,
+        "nonce": secrets.token_urlsafe(16),
+        "iat": now,
+        "exp": now + timedelta(seconds=settings.oauth_state_expire_seconds),
+    }
+    return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+
+
+def decode_oauth_state_token(token: str, expected_provider: str) -> None:
+    """Validate an OAuth `state` value. Raises InvalidTokenError if it is
+    missing, unsigned, expired, or was issued for a different provider."""
+    try:
+        payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+    except jwt.ExpiredSignatureError as exc:
+        raise InvalidTokenError("OAuth state has expired.") from exc
+    except jwt.InvalidTokenError as exc:
+        raise InvalidTokenError("OAuth state is invalid.") from exc
+
+    if payload.get("type") != _OAUTH_STATE_TOKEN_TYPE or payload.get("provider") != expected_provider:
+        raise InvalidTokenError("OAuth state is invalid.")
+
+
+def generate_pkce_pair() -> tuple[str, str]:
+    """Generate a PKCE (RFC 7636) `(code_verifier, code_challenge)` pair.
+
+    `code_challenge` (S256 of `code_verifier`) is sent up front in the
+    authorization request; `code_verifier` itself is kept server-side (a
+    short-lived HttpOnly cookie — see the Google login/callback routes) and
+    only sent later, directly to the token endpoint, so a stolen
+    authorization code alone can't be redeemed by anyone else.
+    """
+    code_verifier = secrets.token_urlsafe(64)
+    digest = hashlib.sha256(code_verifier.encode("ascii")).digest()
+    code_challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+    return code_verifier, code_challenge

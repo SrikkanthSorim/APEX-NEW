@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { FaLink, FaSearch, FaBullseye, FaRocket, FaCheckCircle, FaCode, FaLayerGroup, FaTools, FaBoxes } from "react-icons/fa";
 import { Button, Card, Container } from "@/shared/components/ui";
 import SocialAuthButtons from "../components/SocialAuthButtons";
+import apexLogo from "../../../assets/logo.jpg";
 import "../auth.css";
 
 const WORKFLOW_STEPS = [
@@ -29,6 +30,7 @@ const LandingPage: React.FC = () => {
         <section className="landing-hero">
           <div className="landing-hero-grid">
             <div>
+              <img src={apexLogo} alt="Java APEX" className="landing-hero-logo" />
               <span className="landing-eyebrow">Modernize. Migrate. Accelerate.</span>
               <h1 className="landing-title">
                 Modernize Your <span className="landing-title-accent">Java Applications</span>

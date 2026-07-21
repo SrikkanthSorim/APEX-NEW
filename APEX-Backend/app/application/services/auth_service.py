@@ -21,8 +21,10 @@ from app.core.exceptions import (
     InvalidCredentialsError,
     InvalidRefreshTokenError,
     NotAuthenticatedError,
+    OAuthAccountConflictError,
+    OAuthEmailMissingError,
 )
-from app.infrastructure.persistence import user_repository
+from app.infrastructure.persistence import oauth_repository, user_repository
 from app.infrastructure.persistence.models import User
 
 
@@ -83,14 +85,99 @@ class AuthService:
 
         return user
 
-    def record_login(self, user: User) -> None:
-        user_repository.update_last_login(self._db, user)
+    # --- OAuth (Google / GitHub social login) ---------------------------------
+
+    def authenticate_with_oauth(
+        self,
+        *,
+        provider: str,
+        provider_user_id: str,
+        email: str | None,
+        email_verified: bool,
+        full_name: str | None,
+        profile_image: str | None,
+    ) -> User:
+        """Find-or-create the local user for a verified provider identity.
+
+        - This exact `(provider, provider_user_id)` has logged in before ->
+          always the SAME user, never a new one (repeat logins are idempotent).
+        - First time for this provider identity, but its email matches an
+          existing local (or other-provider) account -> only auto-linked when
+          the provider itself reports the email as verified. An unverified
+          email is rejected instead of silently linked — otherwise anyone who
+          registers *any* OAuth app and enters someone else's email could log
+          in as that person's existing account.
+        - Otherwise -> a brand-new OAuth-only user (`password_hash` stays
+          NULL; this account can never sign in with a password).
+        """
+        existing_account = oauth_repository.get_oauth_account(
+            self._db, provider=provider, provider_user_id=provider_user_id
+        )
+        if existing_account is not None:
+            user = user_repository.get_user_by_id(self._db, existing_account.user_id)
+            if user is None or not user.is_active:
+                raise AccountDisabledError()
+            return user
+
+        normalized_email = email.strip().lower() if email else None
+        if not normalized_email:
+            raise OAuthEmailMissingError()
+
+        existing_user = user_repository.get_user_by_email(self._db, normalized_email)
+        if existing_user is not None:
+            if not email_verified:
+                raise OAuthAccountConflictError()
+            if not existing_user.is_active:
+                raise AccountDisabledError()
+            oauth_repository.create_oauth_account(
+                self._db,
+                user_id=existing_user.id,
+                provider=provider,
+                provider_user_id=provider_user_id,
+                provider_email=normalized_email,
+            )
+            return existing_user
+
+        display_name = (full_name or normalized_email.split("@", 1)[0]).strip() or normalized_email
+        try:
+            new_user = oauth_repository.create_oauth_user(
+                self._db,
+                full_name=display_name,
+                email=normalized_email,
+                auth_provider=provider,
+                provider_user_id=provider_user_id,
+                profile_image=profile_image,
+                is_email_verified=email_verified,
+            )
+        except IntegrityError as exc:
+            # Two OAuth logins for the same brand-new email arrived at
+            # (almost) the same time and both passed the get_user_by_email
+            # check above — the database's unique constraint on email is the
+            # real safety net, same pattern as register() above.
+            raise OAuthAccountConflictError() from exc
+
+        oauth_repository.create_oauth_account(
+            self._db,
+            user_id=new_user.id,
+            provider=provider,
+            provider_user_id=provider_user_id,
+            provider_email=normalized_email,
+        )
+        return new_user
 
     # --- Tokens --------------------------------------------------------------
 
-    def issue_tokens(self, user: User) -> tuple[str, str]:
-        """Create a fresh (access_token, refresh_token) pair and persist the
-        refresh token's hash so it can be validated/rotated/revoked later."""
+    def create_login_session(self, user: User) -> tuple[str, str]:
+        """Record the login and issue a fresh access/refresh token pair.
+
+        The single place every login path (email/password, Google OAuth,
+        GitHub OAuth) goes through, so `last_login_at`, token creation, and
+        refresh-token persistence can never drift out of sync between the
+        three call sites. The refresh token's hash — never the raw token —
+        is what gets persisted (see `_store_refresh_token`); the caller only
+        gets the raw JWTs back, to set as cookies.
+        """
+        user_repository.update_last_login(self._db, user)
         access_token = security.create_access_token(user.id)
         refresh_token = security.create_refresh_token(user.id)
         self._store_refresh_token(user.id, refresh_token)

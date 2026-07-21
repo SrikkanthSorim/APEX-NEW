@@ -151,7 +151,7 @@ class GenerateProjectDocumentationUseCase:
           ("Build Status", strategy.build_status or "Unknown"),
           ("Build Success", "Yes" if strategy.build_success else "No"),
       ])}
-      <h2>OpenRewrite Recipes Executed</h2>
+      <h2>Migration Steps Executed</h2>
       {self._list_or_empty(strategy.recipes_executed)}
       <h3>Recipe Selection Reasons</h3>
       {self._list_or_empty(strategy.recipe_selection_reasons)}

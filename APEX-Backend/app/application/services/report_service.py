@@ -10,10 +10,40 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.shared import migration_log_sanitizer as sanitizer
+
+
+def _sanitized_skipped_recipes(report: dict[str, Any]) -> list[dict[str, Any]]:
+    result = []
+    for item in report.get("skippedRecipes") or []:
+        item = dict(item)
+        if item.get("recipes"):
+            item["recipes"] = sanitizer.humanize_recipe_names(item["recipes"])
+        if item.get("reason"):
+            item["reason"] = sanitizer.sanitize_text(item["reason"])
+        result.append(item)
+    return result
+
+
+def _sanitized_retry_attempts(report: dict[str, Any]) -> list[dict[str, Any]]:
+    result = []
+    for item in report.get("retryAttempts") or []:
+        item = dict(item)
+        if item.get("rootCause"):
+            item["rootCause"] = sanitizer.sanitize_text(item["rootCause"])
+        if item.get("recipesAdded"):
+            item["recipesAdded"] = sanitizer.humanize_recipe_names(item["recipesAdded"])
+        result.append(item)
+    return result
+
 
 def _core(report: dict[str, Any]) -> dict[str, Any]:
-    """Fields shared by summary + detail."""
-    log_lines = report.get("logLines") or []
+    """Fields shared by summary + detail.
+
+    Raw OpenRewrite/Maven/Gradle internals are stripped here, at the single
+    boundary every API response (and, transitively, the generated project
+    documentation) is built from -- see ``migration_log_sanitizer``.
+    """
     return {
         "job_id": report.get("jobId", ""),
         "status": report.get("status", "queued"),
@@ -33,28 +63,31 @@ def _core(report: dict[str, Any]) -> dict[str, Any]:
         "progress_percent": int(report.get("progressPercent") or 0),
         "current_step": report.get("currentStep") or "",
         "files_modified": int(report.get("filesModified") or 0),
-        "error_message": report.get("errorMessage"),
+        "error_message": sanitizer.sanitize_text(report.get("errorMessage")) or None,
         "dependency_count": int(report.get("dependencyCount") or 0),
-        # --- migration engine report fields ---
-        "recipes_executed": report.get("recipes") or [],
-        "recipe_selection_reasons": report.get("recipeSelection") or [],
-        "build_modernization": report.get("buildModernization") or [],
+        # --- migration engine report fields (sanitized: no recipe class
+        # names / OpenRewrite internals reach the API from here) ---
+        "recipes_executed": sanitizer.humanize_recipe_names(report.get("recipes") or []),
+        "recipe_selection_reasons": sanitizer.sanitize_lines(report.get("recipeSelection") or []),
+        "build_modernization": [
+            sanitizer.sanitize_text(line) for line in (report.get("buildModernization") or [])
+        ],
         "dependency_upgrades": report.get("dependencyUpgrades") or [],
         "used_fallback": bool(report.get("usedFallback")),
         "already_compatible": bool(report.get("alreadyCompatible")),
         "build_status": report.get("buildStatus"),
         "build_success": report.get("buildSuccess"),
-        "migration_summary": report.get("migrationSummary") or "",
-        "retry_attempts": report.get("retryAttempts") or [],
+        "migration_summary": sanitizer.sanitize_text(report.get("migrationSummary")) or "",
+        "retry_attempts": _sanitized_retry_attempts(report),
         "migration_phases": report.get("migrationPhases") or [],
-        "skipped_recipes": report.get("skippedRecipes") or [],
+        "skipped_recipes": _sanitized_skipped_recipes(report),
         "spring_source_framework": report.get("springSourceFramework") or "",
         "spring_target_framework": report.get("springTargetFramework") or "",
         "spring_boot_version_before": report.get("springBootVersionBefore"),
         "spring_boot_version_after": report.get("springBootVersionAfter"),
         "spring_conversion_requested": bool(report.get("springConversionRequested")),
         "spring_conversion_supported": report.get("springConversionSupported"),
-        "spring_conversion_note": report.get("springConversionNote"),
+        "spring_conversion_note": sanitizer.sanitize_text(report.get("springConversionNote")) or None,
     }
 
 
@@ -105,7 +138,7 @@ def _analysis(report: dict[str, Any]) -> dict[str, Any]:
 def build_summary(report: dict[str, Any]) -> dict[str, Any]:
     """Shape a `MigrationJobSummary`."""
     core = _core(report)
-    log_lines = report.get("logLines") or []
+    log_lines = sanitizer.sanitize_lines(report.get("logLines") or [])
     return {
         **core,
         **_analysis(report),
@@ -124,7 +157,7 @@ def build_summary(report: dict[str, Any]) -> dict[str, Any]:
 def build_result(report: dict[str, Any]) -> dict[str, Any]:
     """Shape a `MigrationResult` (superset of the summary)."""
     core = _core(report)
-    log_lines = report.get("logLines") or []
+    log_lines = sanitizer.sanitize_lines(report.get("logLines") or [])
     return {
         **core,
         **_analysis(report),
@@ -149,7 +182,7 @@ def build_logs(report: dict[str, Any]) -> dict[str, Any]:
     """Shape the `/logs` response."""
     return {
         "job_id": report.get("jobId", ""),
-        "logs": report.get("logLines") or [],
+        "logs": sanitizer.sanitize_lines(report.get("logLines") or []),
     }
 
 

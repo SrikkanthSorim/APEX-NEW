@@ -13,3 +13,4 @@ const runtimeOrigin =
 export const APP_BASE_URL = (configuredApiUrl || runtimeOrigin).replace(/\/+$/, "");
 export const API_BASE_URL = `${APP_BASE_URL}/api`;
 export const GITHUB_AUTH_LOGIN_URL = `${API_BASE_URL}/auth/github/login`;
+export const GOOGLE_AUTH_LOGIN_URL = `${API_BASE_URL}/auth/google/login`;
