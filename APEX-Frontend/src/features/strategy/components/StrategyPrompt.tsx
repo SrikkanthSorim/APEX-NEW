@@ -23,8 +23,8 @@ export default function StrategyPrompt({ repoAnalysis, repoUrl }: Props) {
     try {
       const res = await queryStrategy({ repo_url: repoUrl || undefined, question: question.trim(), analysis: repoAnalysis || undefined });
       setResponse(res);
-    } catch (err: any) {
-      setError(err?.message || String(err));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }

@@ -142,10 +142,11 @@ async def _run_index(payload: IndexRequest) -> JSONResponse:
                     "detail": "Provide either job_id or repo_url.",
                 },
             )
-    except RepositoryNotFoundForIndexingError as exc:
+    except RepositoryNotFoundForIndexingError:
+        message = "Repository has not been analyzed yet. Run discovery for it first."
         return JSONResponse(
             status_code=404,
-            content={"status": "REPOSITORY_NOT_FOUND", "message": str(exc), "detail": str(exc)},
+            content={"status": "REPOSITORY_NOT_FOUND", "message": message, "detail": message},
         )
 
     return JSONResponse(

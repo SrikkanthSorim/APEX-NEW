@@ -112,10 +112,10 @@ class ConnectRepositoryUseCase:
 
         # 4. Persist the connect report locally.
         #
-        # For private repositories we store the token used so the later
-        # Discovery stage can clone without re-prompting. It is only written for
-        # private repos (public clones need no credentials) and never returned
-        # to the frontend.
+        # The GitHub PAT is deliberately NOT stored on disk. Persisting a secret
+        # in plaintext JSON is a security risk; instead the later Discovery stage
+        # re-receives the token from the client (or the GITHUB_TOKEN env fallback)
+        # when it needs to clone a private repository.
         report = {
             "jobId": job_id,
             "repoUrl": repo_url,
@@ -125,8 +125,6 @@ class ConnectRepositoryUseCase:
             "accessStatus": access.access_status,
             "createdAt": created_at,
         }
-        if access.is_private and github_token:
-            report["githubToken"] = github_token.strip()
         self._job_repository.save_connect_report(job_id, report)
 
         return ConnectResult(

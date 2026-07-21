@@ -1,3 +1,5 @@
 {
-    "java.configuration.updateBuildConfiguration": "interactive"
+    "java.configuration.updateBuildConfiguration": "interactive",
+    "typescript.tsdk": "APEX-Frontend/node_modules/typescript/lib",
+    "typescript.enablePromptUseWorkspaceTsdk": true
 }

@@ -1,8 +1,74 @@
 import React, { useState } from "react";
+import type { CSSProperties } from "react";
+import type { RepoAnalysis } from "@/shared/types/domain";
+
+interface MicroserviceCriteria {
+  name?: string;
+  controller?: string;
+  justification?: string;
+  max_score: number;
+  score_percent: number;
+}
+
+interface MicroserviceChunk {
+  chunk_name?: string;
+  controller?: string;
+  criteria?: MicroserviceCriteria[];
+  criteria_option?: string;
+  entities: string[];
+  label?: string;
+  reason?: string;
+  repositories: string[];
+  services: string[];
+  score: number;
+}
+
+interface MicroserviceSuggestedService {
+  name?: string;
+  description?: string;
+  components?: string[];
+}
+
+interface MicroserviceInsight {
+  icon?: string;
+  title?: string;
+  description?: string;
+}
+
+interface MicroserviceChunkSummary {
+  overall_weighted_score: number;
+  total_chunks?: number;
+  eligible_chunks?: number;
+  eligible_chunk_ratio?: number;
+  not_suitable_chunks?: number;
+  refactor_chunks?: number;
+  scoring_method?: string;
+}
+
+interface MicroserviceResult {
+  controllers_count?: number;
+  services_count?: number;
+  repositories_count?: number;
+  entities_count?: number;
+  java_files_count?: number;
+  score: number;
+  eligible?: boolean;
+  eligibility_label?: string;
+  criteria_option?: string;
+  reasoning?: string;
+  chunk_results?: MicroserviceChunk[];
+  chunk_summary?: MicroserviceChunkSummary;
+  benefits_if_converted?: MicroserviceInsight[];
+  risks_if_not_converted?: MicroserviceInsight[];
+  changes_needed?: MicroserviceInsight[];
+  not_recommended_reasons?: MicroserviceInsight[];
+  suggested_services?: Array<string | MicroserviceSuggestedService>;
+  folder_structure?: string | Record<string, unknown>;
+}
 
 interface MicroserviceAssessmentProps {
-  repoAnalysis: any;
-  microserviceResult: any;
+  repoAnalysis: RepoAnalysis | null;
+  microserviceResult: MicroserviceResult | null;
   microserviceLoading: boolean;
   loading: boolean;
   handleCheckMicroserviceEligibility: () => void;
@@ -10,7 +76,7 @@ interface MicroserviceAssessmentProps {
   setConversionDecision: (val: "yes" | "no" | null) => void;
   showFolderStructure: boolean;
   setShowFolderStructure: (val: boolean) => void;
-  styles: any;
+  styles: Record<string, CSSProperties>;
 }
 
 export default function MicroserviceAssessment({
@@ -26,7 +92,7 @@ export default function MicroserviceAssessment({
   styles,
 }: MicroserviceAssessmentProps) {
   const [microserviceView, setMicroserviceView] = useState<"criteria" | "flowchart">("flowchart");
-  const [selectedChunk, setSelectedChunk] = useState<any | null>(null);
+  const [selectedChunk, setSelectedChunk] = useState<MicroserviceChunk | null>(null);
 
   if (!repoAnalysis) return null;
 
@@ -114,7 +180,7 @@ export default function MicroserviceAssessment({
                     <div style={{ padding: "12px 24px", background: "#fef3c7", border: "2px solid #f59e0b", borderRadius: 10, fontWeight: 600, fontSize: 13, color: "#92400e", textAlign: "center" }}>
                       3. Identify All Controllers<br/>
                       <span style={{ fontSize: 11, fontWeight: 400, color: "#b45309" }}>
-                        {microserviceResult.controllers_count || 0} controller(s) found: {microserviceResult.chunk_results?.filter((c: any) => c.controller).map((c: any) => c.controller).join(", ") || "None"}
+                        {microserviceResult.controllers_count || 0} controller(s) found: {microserviceResult.chunk_results?.filter((c: MicroserviceChunk) => c.controller).map((c: MicroserviceChunk) => c.controller).join(", ") || "None"}
                       </span>
                     </div>
                     <div style={{ width: 2, height: 20, background: "#94a3b8" }} />
@@ -128,7 +194,7 @@ export default function MicroserviceAssessment({
                     <div style={{ width: "100%", padding: "16px", background: "#f8fafc", borderRadius: 12, border: "1px dashed #94a3b8", marginBottom: 4 }}>
                       <div style={{ fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 12, textAlign: "center" }}>Steps 5-8: Chunk Formation (per controller)</div>
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 10 }}>
-                        {microserviceResult.chunk_results?.map((chunk: any, idx: number) => (
+                        {microserviceResult.chunk_results?.map((chunk: MicroserviceChunk, idx: number) => (
                           <div key={idx} style={{
                             padding: "10px 14px",
                             borderRadius: 8,
@@ -194,7 +260,7 @@ export default function MicroserviceAssessment({
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
                         <div style={{ padding: "8px", background: "#fff", borderRadius: 6, border: "1px solid #e2e8f0" }}>
                           <div style={{ fontSize: 10, color: "#64748b" }}>15.1 Chunk Results</div>
-                          {microserviceResult.chunk_results?.map((cr: any, i: number) => (
+                          {microserviceResult.chunk_results?.map((cr: MicroserviceChunk, i: number) => (
                             <div key={i} style={{ fontSize: 11, marginTop: 2 }}>
                               <span style={{ fontWeight: 600 }}>{cr.chunk_name}</span> → <span style={{ color: cr.score >= 70 ? "#166534" : cr.score >= 51 ? "#92400e" : "#991b1b", fontWeight: 700 }}>{cr.score}%</span>
                               <span style={{ marginLeft: 4, fontSize: 10, color: cr.score >= 70 ? "#22c55e" : cr.score >= 51 ? "#f59e0b" : "#ef4444" }}>{cr.label}</span>
@@ -301,7 +367,7 @@ export default function MicroserviceAssessment({
 
                 <div style={{ padding: "16px 20px", background: "#fff" }}>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
-                    {microserviceResult.chunk_results.map((chunk: any, idx: number) => (
+                    {microserviceResult.chunk_results?.map((chunk: MicroserviceChunk, idx: number) => (
                       <div key={idx} style={{
                         padding: "14px 16px", borderRadius: 10,
                         border: `2px solid ${chunk.score >= 70 ? "#86efac" : chunk.score >= 51 ? "#fcd34d" : "#fca5a5"}`,
@@ -387,7 +453,7 @@ export default function MicroserviceAssessment({
                           </tr>
                         </thead>
                         <tbody>
-                          {selectedChunk.criteria.map((c: any, i: number) => (
+                          {selectedChunk.criteria?.map((c: MicroserviceCriteria, i: number) => (
                             <tr key={i} style={{ borderBottom: "1px solid #f1f5f9" }}>
                               <td style={{ padding: "14px 16px", fontWeight: 600, color: "#1e293b" }}>{c.name}</td>
                               <td style={{ padding: "14px 16px", textAlign: "center", color: "#64748b", fontWeight: 600 }}>{c.max_score}%</td>
@@ -439,7 +505,7 @@ export default function MicroserviceAssessment({
                 </div>
                 {microserviceResult.benefits_if_converted && microserviceResult.benefits_if_converted.length > 0 ? (
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                    {microserviceResult.benefits_if_converted.map((benefit: any, idx: number) => (
+                    {microserviceResult.benefits_if_converted?.map((benefit: MicroserviceInsight, idx: number) => (
                       <div key={idx} style={{ padding: "10px 12px", background: "#fff", borderRadius: 8, border: "1px solid #dcfce7" }}>
                         <div style={{ fontSize: 12, fontWeight: 600, color: "#166534", marginBottom: 4 }}>{benefit.icon || "✅"} {benefit.title}</div>
                         <div style={{ fontSize: 11, color: "#15803d", lineHeight: 1.4 }}>{benefit.description}</div>
@@ -455,7 +521,7 @@ export default function MicroserviceAssessment({
                 </div>
                 {microserviceResult.risks_if_not_converted && microserviceResult.risks_if_not_converted.length > 0 ? (
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                    {microserviceResult.risks_if_not_converted.map((risk: any, idx: number) => (
+                    {microserviceResult.risks_if_not_converted?.map((risk: MicroserviceInsight, idx: number) => (
                       <div key={idx} style={{ padding: "10px 12px", background: "#fff", borderRadius: 8, border: "1px solid #fee2e2" }}>
                         <div style={{ fontSize: 12, fontWeight: 600, color: "#991b1b", marginBottom: 4 }}>{risk.icon || "⚠️"} {risk.title}</div>
                         <div style={{ fontSize: 11, color: "#b91c1c", lineHeight: 1.4 }}>{risk.description}</div>
@@ -477,7 +543,7 @@ export default function MicroserviceAssessment({
                   </div>
                   {microserviceResult.changes_needed && microserviceResult.changes_needed.length > 0 ? (
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                      {microserviceResult.changes_needed.map((change: any, idx: number) => (
+                      {microserviceResult.changes_needed?.map((change: MicroserviceInsight, idx: number) => (
                         <div key={idx} style={{ padding: "10px 12px", background: "#fff", borderRadius: 8, border: "1px solid #fef3c7" }}>
                           <div style={{ fontSize: 12, fontWeight: 600, color: "#92400e", marginBottom: 2 }}>📋 {change.title}</div>
                           <div style={{ fontSize: 11, color: "#b45309", lineHeight: 1.4 }}>{change.description}</div>
@@ -499,7 +565,7 @@ export default function MicroserviceAssessment({
                   </div>
                   {microserviceResult.not_recommended_reasons && microserviceResult.not_recommended_reasons.length > 0 ? (
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                      {microserviceResult.not_recommended_reasons.map((reason: any, idx: number) => (
+                      {microserviceResult.not_recommended_reasons?.map((reason: MicroserviceInsight, idx: number) => (
                         <div key={idx} style={{ padding: "10px 12px", background: "#fff", borderRadius: 8, border: "1px solid #fee2e2" }}>
                           <div style={{ fontSize: 12, fontWeight: 600, color: "#991b1b", marginBottom: 2 }}>❌ {reason.title}</div>
                           <div style={{ fontSize: 11, color: "#b91c1c", lineHeight: 1.4 }}>{reason.description}</div>
@@ -553,9 +619,9 @@ export default function MicroserviceAssessment({
                 <div style={{ marginTop: 16 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: "#1e40af", marginBottom: 10 }}>🧩 Suggested Microservices Decomposition:</div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-                    {microserviceResult.suggested_services.map((svc: any, i: number) => (
+                    {microserviceResult.suggested_services?.map((svc: string | MicroserviceSuggestedService, i: number) => (
                       <div key={i} style={{ padding: "12px 16px", background: "#fff", borderRadius: 10, border: "1px solid #bfdbfe", minWidth: 180 }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: "#1e40af", marginBottom: 4 }}>{typeof svc === "string" ? svc : svc.name || svc}</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: "#1e40af", marginBottom: 4 }}>{typeof svc === "string" ? svc : svc.name || "Service"}</div>
                         {typeof svc === "object" && svc.description && <div style={{ fontSize: 11, color: "#64748b", marginBottom: 6 }}>{svc.description}</div>}
                         {typeof svc === "object" && svc.components && svc.components.length > 0 && (
                           <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>

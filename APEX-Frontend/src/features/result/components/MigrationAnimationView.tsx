@@ -180,22 +180,22 @@ export function MigrationAnimationView({
       </div>
 
       {(qualityVisible || qualityComplete) && (() => {
-        const functionalTesting = migrationJob?.test_pipeline?.functional_testing ?? (migrationJob as any)?.functional_pipeline ?? null;
-        const runners: Array<Record<string, any>> = functionalTesting?.execution?.runners ?? [];
-        const mockMvcRunners = runners.filter((r: Record<string, any>) =>
+        const functionalTesting = migrationJob?.test_pipeline?.functional_testing ?? migrationJob?.functional_pipeline ?? null;
+        const runners = functionalTesting?.execution?.runners ?? [];
+        const mockMvcRunners = runners.filter((r) =>
           r.tool === "MOCK_MVC" || r.tool?.toLowerCase().includes("mock") || r.tool?.toLowerCase().includes("springmvc")
         );
-        const uiRunners = runners.filter((r: Record<string, any>) =>
+        const uiRunners = runners.filter((r) =>
           r.tool === "PLAYWRIGHT" || r.tool === "SELENIUM" || r.tool?.toLowerCase() === "playwright" || r.tool?.toLowerCase() === "selenium"
         );
-        const springTestCases: Array<Record<string, any>> = (functionalTesting?.test_cases ?? []) as Array<Record<string, any>>;
-        const filteredSpringTestCases = springTestCases.filter((tc: Record<string, any>) =>
+        const springTestCases = functionalTesting?.test_cases ?? [];
+        const filteredSpringTestCases = springTestCases.filter((tc) =>
           tc.tool === "MOCK_MVC" || tc.tool?.toLowerCase().includes("mock") || tc.tool?.toLowerCase().includes("spring")
         );
         if (runners.length === 0 && filteredSpringTestCases.length === 0) return null;
-        const totalTests = runners.reduce((s: number, r: Record<string, any>) => s + (r.tests_run ?? 0), 0);
-        const totalPassed = runners.reduce((s: number, r: Record<string, any>) => s + (r.tests_passed ?? 0), 0);
-        const renderRunnerRow = (runner: Record<string, any>, idx: number) => (
+        const totalTests = runners.reduce((s: number, r) => s + (r.tests_run ?? 0), 0);
+        const totalPassed = runners.reduce((s: number, r) => s + (r.tests_passed ?? 0), 0);
+        const renderRunnerRow = (runner: (typeof runners)[number], idx: number) => (
           <div key={`runner-${idx}`} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "10px 14px", borderRadius: 10, border: "1px solid #bbf7d0", background: "#f0fdf4" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1 }}>
               <span style={{ fontSize: 16 }}>{runner.status === "passed" ? "✅" : runner.status === "skipped" ? "⏭️" : "⚠️"}</span>
@@ -242,7 +242,7 @@ export function MigrationAnimationView({
                 <div style={{ marginBottom: uiRunners.length > 0 ? 16 : 0 }}>
                   <div style={{ fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>MockMvc &amp; Spring MVC</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {mockMvcRunners.map((runner: Record<string, any>, idx: number) => renderRunnerRow(runner, idx))}
+                    {mockMvcRunners.map((runner, idx: number) => renderRunnerRow(runner, idx))}
                   </div>
                 </div>
               )}
@@ -250,7 +250,7 @@ export function MigrationAnimationView({
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>Playwright / Selenium</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {uiRunners.map((runner: Record<string, any>, idx: number) => renderRunnerRow(runner, idx))}
+                    {uiRunners.map((runner, idx: number) => renderRunnerRow(runner, idx))}
                   </div>
                 </div>
               )}
@@ -280,7 +280,7 @@ export function MigrationAnimationView({
                 <div style={{ marginTop: 12 }}>
                   <div style={{ fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>Test Cases</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    {filteredSpringTestCases.slice(0, 10).map((tc: Record<string, any>, idx: number) => (
+                    {filteredSpringTestCases.slice(0, 10).map((tc, idx: number) => (
                       <div key={`spring-tc-${idx}`} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 8, border: "1px solid #e2e8f0", background: "#fff" }}>
                         <span style={{ fontSize: 14, color: tc.status === "passed" ? "#16a34a" : tc.status === "failed" ? "#dc2626" : "#64748b" }}>
                           {tc.status === "passed" ? "✅" : tc.status === "failed" ? "❌" : "⏳"}

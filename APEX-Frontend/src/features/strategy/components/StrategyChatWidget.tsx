@@ -107,7 +107,7 @@ export default function StrategyChatWidget({ repoUrl, strategyContext }: Props) 
     useEffect(() => {
       const t = setInterval(() => setIdx((i) => (i + 1) % messages.length), 800);
       return () => clearInterval(t);
-    }, []);
+    }, [messages.length]);
     return (
       <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -127,7 +127,6 @@ export default function StrategyChatWidget({ repoUrl, strategyContext }: Props) 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const abortedByUserRef = useRef(false);
-  const activeRepoName = strategyContext?.repository?.name || repoUrl || "this repository";
 
   const storageKey = makeStorageKey(repoUrl);
 
@@ -162,10 +161,6 @@ export default function StrategyChatWidget({ repoUrl, strategyContext }: Props) 
   
 
   const addMessage = (msg: ChatMessage) => setMessages((m) => [...m, msg]);
-
-  const focusComposer = () => {
-    window.requestAnimationFrame(() => textareaRef.current?.focus());
-  };
 
   const normalizeComparisonTable = (value: unknown): ComparisonTableSpec | null => {
     if (!value || typeof value !== "object") return null;
@@ -350,7 +345,7 @@ export default function StrategyChatWidget({ repoUrl, strategyContext }: Props) 
               <tr>
                 {Array.from({ length: columnCount }, (_, headerIndex) => (
                   <th key={`${message.id}_c_th_${headerIndex}`}>
-                    {message.comparisonTable.headers[headerIndex] || ""}
+                    {message.comparisonTable?.headers[headerIndex] || ""}
                   </th>
                 ))}
               </tr>
@@ -485,7 +480,7 @@ export default function StrategyChatWidget({ repoUrl, strategyContext }: Props) 
             const errMsg = payload?.message || JSON.stringify(payload);
             setMessages((prev) => prev.map((m) => (m.id === assistantPlaceholder.id ? { ...m, content: `Error: ${errMsg}` } : m)));
           }
-        } catch (e) {
+        } catch {
           // ignore parse errors
         }
       };
@@ -505,14 +500,14 @@ export default function StrategyChatWidget({ repoUrl, strategyContext }: Props) 
 
       // flush remaining
       if (buffer.trim()) flushEvent(buffer.trim());
-    } catch (err: any) {
+    } catch (err) {
       // handle abort vs other errors
-      const aborted = abortedByUserRef.current || (err && err.name === "AbortError");
+      const aborted = abortedByUserRef.current || (err instanceof Error && err.name === "AbortError");
       if (aborted) {
         const stopText = `Stopped by user.`;
         setMessages((prev) => prev.map((m) => (m.id === assistantPlaceholder.id ? { ...m, content: stopText } : m)));
       } else {
-        const errorText = `Error: ${err?.message || String(err)}`;
+        const errorText = `Error: ${err instanceof Error ? err.message : String(err)}`;
         setMessages((prev) => prev.map((m) => (m.id === assistantPlaceholder.id ? { ...m, content: errorText } : m)));
       }
     } finally {
@@ -520,7 +515,7 @@ export default function StrategyChatWidget({ repoUrl, strategyContext }: Props) 
       try {
         abortControllerRef.current = null;
         abortedByUserRef.current = false;
-      } catch {}
+      } catch { /* ignore */ }
     }
   };
 
@@ -530,7 +525,7 @@ export default function StrategyChatWidget({ repoUrl, strategyContext }: Props) 
       abortedByUserRef.current = true;
       try {
         ctrl.abort();
-      } catch {}
+      } catch { /* ignore */ }
       setSending(false);
     }
   };
@@ -543,19 +538,13 @@ export default function StrategyChatWidget({ repoUrl, strategyContext }: Props) 
     }
   };
 
-  const usePrompt = (prompt: string) => {
-    setOpen(true);
-    void handleSend(prompt);
-  };
-
   const clearHistory = () => {
     setMessages([]);
     try {
       localStorage.removeItem(storageKey);
-    } catch {}
+    } catch { /* ignore */ }
   };
 
-  const hasMessages = messages.length > 0;
   const latestAssistantMessage = [...messages].reverse().find((message) => message.role === "assistant");
   const showingTypingState =
     sending ||

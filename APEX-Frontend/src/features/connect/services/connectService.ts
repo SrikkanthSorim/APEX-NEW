@@ -1,5 +1,5 @@
-import { performRequest, requestJson } from "@/services/http/client";
-import type { RepoAnalysis, RepoFile, RepoInfo } from "@/shared/types/domain";
+import { authHeader, performRequest, requestJson } from "@/services/http/client";
+import type { RepoAnalysis, RepoFile } from "@/shared/types/domain";
 
 /**
  * Connect stage (Step 1) — talks to the new layered backend endpoint
@@ -118,32 +118,19 @@ export interface FileContentResponse {
   content: string;
 }
 
-export async function fetchRepositories(token: string): Promise<RepoInfo[]> {
-  return requestJson<RepoInfo[]>("/github/repos", "Failed to fetch repositories", {
-    query: { token },
-  });
-}
-
-export async function analyzeRepository(token: string, owner: string, repo: string): Promise<RepoAnalysis> {
-  return requestJson<RepoAnalysis>(
-    `/github/repo/${owner}/${repo}/analyze`,
-    "Failed to analyze repository",
-    {
-      query: { token },
-    }
-  );
-}
-
-// Analyze repository directly by URL (works for public repos without token)
+// Analyze repository directly by URL (works for public repos without token).
+// The GitHub PAT is sent as an Authorization header, never in the query string.
 export async function analyzeRepoUrl(repoUrl: string, token: string = "", forceRefresh: boolean = false): Promise<RepoUrlAnalysis> {
   return requestJson<RepoUrlAnalysis>("/github/analyze-url", "Failed to analyze repository", {
-    query: { repo_url: repoUrl, token, force_refresh: forceRefresh },
+    query: { repo_url: repoUrl, force_refresh: forceRefresh },
+    headers: authHeader(token),
   });
 }
 
 export async function getRepoVisibility(repoUrl: string, token: string = ""): Promise<RepoVisibilityInfo> {
   return requestJson<RepoVisibilityInfo>("/github/repo-visibility", "Failed to check repository visibility", {
-    query: { repo_url: repoUrl, token },
+    query: { repo_url: repoUrl },
+    headers: authHeader(token),
   });
 }
 

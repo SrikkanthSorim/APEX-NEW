@@ -137,9 +137,6 @@ const codeChangeCategoryMeta: Record<
   other: { label: "Other", bg: "#e2e8f0", text: "#475569", border: "#cbd5e1" },
 };
 
-const _getChangeImpactLabel = (churn: number) =>
-  churn >= 80 ? "High impact" : churn >= 20 ? "Medium impact" : "Targeted change";
-
 const getFriendlyFossaEnrichmentMessage = (message: string | null | undefined): string | null => {
   if (!message) {
     return null;
@@ -1002,17 +999,13 @@ export function MigrationUnitTestSection({
   testSummaryReportDate,
   migrationJavaVersion,
   summaryItems,
-  testStatusColors: _testStatusColors,
-  testStatusIcon: _testStatusIcon,
-  testSummaryText: _testSummaryText,
-  testModel: _testModel,
   testInsights,
   testsRun,
   rerunTestsLoading,
   onRerunTests,
   onDownloadUnitTestReport,
 }: MigrationUnitTestSectionProps) {
-  const functionalTesting = migrationJob.test_pipeline?.functional_testing ?? (migrationJob as any)?.functional_pipeline ?? null;
+  const functionalTesting = migrationJob.test_pipeline?.functional_testing ?? migrationJob.functional_pipeline ?? null;
   const functionalTools = functionalTesting?.recommended_tools ?? [];
   const functionalGeneratedFiles = functionalTesting?.generated_files ?? [];
   const functionalRunnerCommands = functionalTesting?.runner_commands ?? [];
@@ -1053,8 +1046,8 @@ export function MigrationUnitTestSection({
     try {
       const content = await getFunctionalTestFileContent(migrationJob.job_id, filePath);
       setViewedFileContent(content);
-    } catch (err: any) {
-      setViewedFileError(err.message || "Failed to load file content.");
+    } catch (err) {
+      setViewedFileError(err instanceof Error ? err.message : "Failed to load file content.");
     } finally {
       setViewedFileLoading(false);
     }
@@ -1066,8 +1059,8 @@ export function MigrationUnitTestSection({
       const blob = await downloadFunctionalTestFile(migrationJob.job_id, filePath);
       const filename = filePath.split("/").pop() || "test-file";
       triggerBlobDownload(blob, filename);
-    } catch (err: any) {
-      alert(err.message || "Failed to download file.");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to download file.");
     } finally {
       setDownloadingFile(null);
     }
@@ -1078,8 +1071,8 @@ export function MigrationUnitTestSection({
     try {
       const blob = await downloadFunctionalTestsZip(migrationJob.job_id);
       triggerBlobDownload(blob, `functional-tests-${migrationJob.job_id}.zip`);
-    } catch (err: any) {
-      alert(err.message || "Failed to download functional tests ZIP.");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to download functional tests ZIP.");
     } finally {
       setDownloadingZip(false);
     }
@@ -1342,7 +1335,7 @@ export function MigrationUnitTestSection({
               <div style={{ marginTop: 10 }}>
                 <strong>Validation results:</strong>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
-                  {functionalRunners.map((runner: any, idx: number) => {
+                  {functionalRunners.map((runner, idx: number) => {
                     const runnerStatus = (runner.status || "").toLowerCase();
                     const isSkipped = runnerStatus === "skipped";
                     const isGenerated = runnerStatus === "generated";
@@ -1377,7 +1370,7 @@ export function MigrationUnitTestSection({
                           }}>
                             {statusLabel}
                           </span>
-                          {runner.tests_run > 0 && (
+                          {(runner.tests_run ?? 0) > 0 && (
                             <span style={{ fontSize: 11, color: "#64748b", whiteSpace: "nowrap" }}>
                               ({runner.tests_passed}/{runner.tests_run} passed)
                             </span>
@@ -1385,7 +1378,7 @@ export function MigrationUnitTestSection({
                         </div>
                         {runner.report_available && migrationJob.job_id && (
                           <a
-                            href={getFunctionalTestReportUrl(migrationJob.job_id, runner.report_tool || runner.tool)}
+                            href={getFunctionalTestReportUrl(migrationJob.job_id, runner.report_tool || runner.tool || "")}
                             target="_blank"
                             rel="noopener noreferrer"
                             style={{
@@ -1425,7 +1418,7 @@ export function MigrationUnitTestSection({
                 <strong>Functional test cases:</strong>
                 <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
                   {functionalTestCases
-                    .filter((tc: any) => tc.status !== "failed")
+                    .filter((tc) => tc.status !== "failed")
                     .slice(0, 20)
                     .map((testCase, index) => {
                     const target = testCase.path || testCase.route || testCase.schema || "-";
@@ -1493,7 +1486,7 @@ export function MigrationUnitTestSection({
                   })}
                 </div>
                 {(() => {
-                  const shown = functionalTestCases.filter((tc: any) => tc.status !== "failed").length;
+                  const shown = functionalTestCases.filter((tc) => tc.status !== "failed").length;
                   const total = functionalTestCases.length;
                   return (
                     <div style={{ marginTop: 8, color: "#64748b" }}>

@@ -65,7 +65,12 @@ export interface RepoAnalysis {
   }[];
   test_file_list?: { path: string; tool: string }[];
   dependencies: DependencyInfo[];
-  api_endpoints: { path: string; method: string; file: string }[];
+  api_endpoints: { path: string; method: string; file: string; controller?: string; source_file?: string }[];
+  // Optional extras consumed by the wizard/modernization views (populated by
+  // some analysis paths, absent in others).
+  all_files?: Array<string | { path?: string }>;
+  uiRoutes?: Array<{ route: string; source_file?: string; page_type?: string; component?: string }>;
+  page_data?: Record<string, unknown>;
   structure: {
     has_pom_xml: boolean;
     has_build_gradle: boolean;

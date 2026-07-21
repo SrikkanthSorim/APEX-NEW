@@ -1,4 +1,4 @@
-import { performRequest, requestJson, ABSOLUTE_URL_PATTERN } from "@/services/http/client";
+import { authHeader, performRequest, requestJson, ABSOLUTE_URL_PATTERN } from "@/services/http/client";
 import { APP_BASE_URL } from "@/services/config/env";
 import type { RepoFilesResponse, FileContentResponse } from "@/features/connect/services/connectService";
 import type { DependencyInfo, RepoAnalysis, MicroserviceEligibilityResult, RepoFile } from "@/shared/types/domain";
@@ -253,17 +253,21 @@ function resolveDocumentUrl(url: string | undefined): string | undefined {
     : new URL(url.replace(/^\/+/, ""), `${APP_BASE_URL}/`).toString();
 }
 
-// List files in a repository (works for public repos without token)
+// List files in a repository (works for public repos without token). The GitHub
+// PAT, when present, is sent as an Authorization header, never in the query string.
 export async function listRepoFiles(repoUrl: string, token: string = "", path: string = ""): Promise<RepoFilesResponse> {
   return requestJson<RepoFilesResponse>("/github/list-files", "Failed to list files", {
-    query: { repo_url: repoUrl, token, path },
+    query: { repo_url: repoUrl, path },
+    headers: authHeader(token),
   });
 }
 
-// Get file content (works for public repos without token)
+// Get file content (works for public repos without token). The GitHub PAT, when
+// present, is sent as an Authorization header, never in the query string.
 export async function getFileContent(repoUrl: string, filePath: string, token: string = ""): Promise<FileContentResponse> {
   return requestJson<FileContentResponse>("/github/file-content", "Failed to get file content", {
-    query: { repo_url: repoUrl, file_path: filePath, token },
+    query: { repo_url: repoUrl, file_path: filePath },
+    headers: authHeader(token),
   });
 }
 
@@ -329,8 +333,8 @@ export async function getMicroserviceEligibility(
 // workspace) — detects controllers/services/repositories/entities, groups
 // them into per-controller business chunks via their actual dependency
 // graph, and scores each chunk. No GitHub API calls, no mock data.
-export async function getDiscoveryMicroserviceEligibility(jobId: string): Promise<any> {
-  return requestJson<any>(
+export async function getDiscoveryMicroserviceEligibility(jobId: string): Promise<MicroserviceEligibilityResult> {
+  return requestJson<MicroserviceEligibilityResult>(
     `/v1/discovery/${encodeURIComponent(jobId)}/microservice-eligibility`,
     "Failed to get microservice eligibility"
   );

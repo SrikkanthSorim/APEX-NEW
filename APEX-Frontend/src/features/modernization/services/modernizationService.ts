@@ -188,7 +188,7 @@ export async function previewFunctionalTestScope(
   projectName: string,
   endpoints: { path: string; method: string; file?: string; controller?: string }[],
   uiRoutes: { route: string; source_file?: string; page_type?: string; component?: string }[],
-  pageData: Record<string, any>,
+  pageData: Record<string, unknown>,
   selectedTools: string[] = [],
   repoUrl: string = "",
   token: string = "",
@@ -213,7 +213,7 @@ export async function previewFunctionalTestScope(
 
 export async function getToolRecommendations(
   projectName: string,
-  analysis: any,
+  analysis: unknown,
   tools: string[],
 ): Promise<ToolRecommendationsResponse> {
   return requestJson<ToolRecommendationsResponse>(

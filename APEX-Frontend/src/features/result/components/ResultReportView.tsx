@@ -36,7 +36,7 @@ import {
   type SonarFindingFilter,
   type CodeSmellSeverityFilter,
 } from "../utils/reportFormatting";
-import { getMigrationElapsedSeconds } from "./MigrationTimer";
+import { getMigrationElapsedSeconds } from "../utils/migrationTiming";
 import type { useMigrationExecution } from "../hooks/useMigrationExecution";
 
 const MigrationFossaSection = React.lazy(async () => {
@@ -122,7 +122,6 @@ export function ResultReportView({
       code_smells: SONAR_FINDINGS_PAGE_SIZE,
       security_hotspots: SONAR_FINDINGS_PAGE_SIZE,
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [migrationJob?.job_id, migrationJob?.sonar_report, migrationJob?.sonar_scan_mode]);
 
   const toggleReportAccordion = (section: "sonar" | "fossa" | "issues") => {
@@ -174,13 +173,14 @@ export function ResultReportView({
   const generatedTestCases = testSummaryMetrics?.generated_test_cases ?? 0;
   const totalTestCases = testSummaryMetrics?.total_test_cases ?? (existingTestCases + generatedTestCases);
   const migrationJavaVersion = testSummaryMetrics?.java_migration_version ?? "";
-  const jacocoCoverageAvailable = (migrationJob?.test_pipeline?.coverage_result as any)?.available;
+  const coverageResult = migrationJob?.test_pipeline?.coverage_result as
+    | { available?: boolean; line_coverage_pct?: number; line_coverage?: number }
+    | undefined;
+  const jacocoCoverageAvailable = coverageResult?.available;
   const jacocoCoveragePct =
     jacocoCoverageAvailable === false
       ? null
-      : (migrationJob?.test_pipeline?.coverage_result as any)?.line_coverage_pct ??
-        (migrationJob?.test_pipeline?.coverage_result as any)?.line_coverage ??
-        null;
+      : coverageResult?.line_coverage_pct ?? coverageResult?.line_coverage ?? null;
   const testSummaryReportDate = migrationJob?.completed_at
     ? new Date(migrationJob.completed_at).toLocaleDateString()
     : new Date().toLocaleDateString();
@@ -850,7 +850,7 @@ export function ResultReportView({
               codeSmellSeverityCounts={codeSmellSeverityCounts}
               sonarCategoryCards={sonarCategoryCards}
               visibleSonarSections={visibleSonarSections}
-              renderSonarFindingSection={(section: any) =>
+              renderSonarFindingSection={(section: (typeof visibleSonarSections)[number]) =>
                 renderSonarFindingSection(
                   section.key,
                   section.title,

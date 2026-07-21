@@ -9,6 +9,16 @@ export interface ApiRequestOptions extends Omit<RequestInit, "body" | "headers">
   headers?: HeadersInit;
 }
 
+/**
+ * Build an Authorization header carrying a GitHub PAT, or an empty object when
+ * no token is provided. Sending the token as a header (never in the URL query
+ * string) keeps it out of browser history, server logs, proxies, and referrers.
+ */
+export function authHeader(token?: string | null): Record<string, string> {
+  const trimmed = token?.trim();
+  return trimmed ? { Authorization: `Bearer ${trimmed}` } : {};
+}
+
 export class ApiError extends Error {
   status: number;
   code?: string;

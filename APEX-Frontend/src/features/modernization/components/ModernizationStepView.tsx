@@ -112,7 +112,7 @@ export function ModernizationStepView({
     if (toolIds.length === 0) return;
     setToolRecsLoading(true);
     const projectName = repoAnalysis.name || repoAnalysis.full_name || "Project";
-    const allFiles = ((repoAnalysis as any)?.all_files ?? []).map((f: any) =>
+    const allFiles = (repoAnalysis?.all_files ?? []).map((f) =>
       typeof f === "string" ? f : (f?.path || "")
     );
     const depArtifacts = (repoAnalysis.dependencies ?? []).map((d) => d.artifact_id || "");
@@ -141,9 +141,9 @@ export function ModernizationStepView({
     const autoFetch = async () => {
       setScopePreviewLoading(true);
       try {
-        const endpoints = (repoAnalysis as any)?.api_endpoints || [];
-        const uiRoutes = (repoAnalysis as any)?.uiRoutes || [];
-        const pageData = (repoAnalysis as any)?.page_data || {};
+        const endpoints = repoAnalysis?.api_endpoints || [];
+        const uiRoutes = repoAnalysis?.uiRoutes || [];
+        const pageData = repoAnalysis?.page_data || {};
         const result = await previewFunctionalTestScope(
           selectedRepo?.name || repoUrl.split("/").pop()?.replace(".git", "") || "Project",
           endpoints, uiRoutes, pageData,
@@ -885,9 +885,9 @@ export function ModernizationStepView({
                   try {
                     setScopePreviewLoading(true);
                     setScopePreviewError(null);
-                    const endpoints = (repoAnalysis as any)?.api_endpoints || [];
-                    const uiRoutes = (repoAnalysis as any)?.uiRoutes || [];
-                    const pageData = (repoAnalysis as any)?.page_data || {};
+                    const endpoints = repoAnalysis?.api_endpoints || [];
+                    const uiRoutes = repoAnalysis?.uiRoutes || [];
+                    const pageData = repoAnalysis?.page_data || {};
                     const result = await previewFunctionalTestScope(
                       selectedRepo?.name || repoUrl.split("/").pop()?.replace(".git", "") || "Project",
                       endpoints, uiRoutes, pageData,
@@ -902,8 +902,8 @@ export function ModernizationStepView({
                     a.click();
                     URL.revokeObjectURL(url);
                     setScopePreview(result);
-                  } catch (err: any) {
-                    setScopePreviewError(err?.message || "Failed to generate scope document");
+                  } catch (err) {
+                    setScopePreviewError(err instanceof Error ? err.message : "Failed to generate scope document");
                   } finally {
                     setScopePreviewLoading(false);
                   }
@@ -991,9 +991,9 @@ export function ModernizationStepView({
                   try {
                     setScopePreviewLoading(true);
                     setScopePreviewError(null);
-                    const endpoints = (repoAnalysis as any)?.api_endpoints || [];
-                    const uiRoutes = (repoAnalysis as any)?.uiRoutes || [];
-                    const pageData = (repoAnalysis as any)?.page_data || {};
+                    const endpoints = repoAnalysis?.api_endpoints || [];
+                    const uiRoutes = repoAnalysis?.uiRoutes || [];
+                    const pageData = repoAnalysis?.page_data || {};
                     const result = await previewFunctionalTestScope(
                       selectedRepo?.name || repoUrl.split("/").pop()?.replace(".git", "") || "Project",
                       endpoints, uiRoutes, pageData,
@@ -1008,8 +1008,8 @@ export function ModernizationStepView({
                     a.click();
                     URL.revokeObjectURL(url);
                     setScopePreview(result);
-                  } catch (err: any) {
-                    setScopePreviewError(err?.message || "Failed to generate scope document");
+                  } catch (err) {
+                    setScopePreviewError(err instanceof Error ? err.message : "Failed to generate scope document");
                   } finally {
                     setScopePreviewLoading(false);
                   }

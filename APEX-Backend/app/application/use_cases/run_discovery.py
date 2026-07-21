@@ -62,9 +62,10 @@ class RunDiscoveryUseCase:
         repo_name = connect.get("repoName", "")
         visibility = connect.get("repoVisibility", "PUBLIC")
 
+        # The PAT is never persisted with the connect report (secret at rest);
+        # it comes from the client on this request, falling back to the env token.
         token = (
             (request_token or "").strip()
-            or (connect.get("githubToken") or "").strip()
             or (settings.github_token or "").strip()
             or None
         )

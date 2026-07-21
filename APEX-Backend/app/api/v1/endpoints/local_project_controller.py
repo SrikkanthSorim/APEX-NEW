@@ -8,13 +8,24 @@ disabled instead of 404-ing (which previously broke the capabilities probe).
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
 from app.application.use_cases.generate_technical_document import GenerateTechnicalDocumentUseCase
+from app.core.exceptions import (
+    CloneFailedError,
+    GithubServiceError,
+    InvalidRepositoryUrlError,
+    RepositoryAccessDeniedError,
+    RepositoryNotFoundError,
+)
 from app.schemas.document_schema import TechnicalDocumentRequest, TechnicalDocumentResponse
 from app.schemas.local_project_schema import LocalProjectCapabilitiesResponse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["local-project"])
 _document_use_case = GenerateTechnicalDocumentUseCase()
@@ -44,10 +55,22 @@ async def local_project_capabilities() -> LocalProjectCapabilitiesResponse:
 async def generate_local_project_brd_document(payload: TechnicalDocumentRequest) -> JSONResponse:
     try:
         result = await run_in_threadpool(_document_use_case.execute, payload)
-    except Exception as exc:
+    except InvalidRepositoryUrlError as exc:
+        return JSONResponse(status_code=400, content={"detail": exc.message})
+    except RepositoryAccessDeniedError as exc:
+        return JSONResponse(status_code=403, content={"detail": exc.message})
+    except RepositoryNotFoundError as exc:
+        return JSONResponse(status_code=404, content={"detail": exc.message})
+    except CloneFailedError as exc:
+        return JSONResponse(status_code=502, content={"detail": exc.message})
+    except GithubServiceError as exc:
+        return JSONResponse(status_code=502, content={"detail": exc.message})
+    except Exception:
+        # Log the real cause server-side; never return raw exception text.
+        logger.exception("Unexpected error generating local-project technical document.")
         return JSONResponse(
             status_code=500,
-            content={"detail": str(exc) or "Failed to generate technical document."},
+            content={"detail": "Failed to generate technical document."},
         )
 
     return JSONResponse(status_code=200, content=result)

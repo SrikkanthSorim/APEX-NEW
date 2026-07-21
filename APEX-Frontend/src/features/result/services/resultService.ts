@@ -99,55 +99,7 @@ export interface FossaScanResult {
   raw_summary?: string | null;
 }
 
-export interface MigrationResult {
-  job_id: string;
-  status: string;
-  source_repo: string;
-  target_repo: string | null;
-  source_java_version: string;
-  target_java_version: string;
-  conversion_types: string[];
-  started_at: string;
-  worker_started_at?: string | null;
-  completed_at: string | null;
-  progress_percent: number;
-  current_step: string;
-  dependencies: DependencyInfo[];
-  files_modified: number;
-  issues_fixed: number;
-  api_endpoints_validated: number;
-  api_endpoints_working: number;
-  sonar_quality_gate: string | null;
-  sonar_bugs: number;
-  sonar_vulnerabilities: number;
-  sonar_code_smells: number;
-  sonar_coverage: number;
-  sonar_duplications?: number;
-  sonar_security_hotspots?: number;
-  sonar_scan_mode?: string | null;
-  sonar_real_scan?: boolean;
-  sonar_analysis_url?: string | null;
-  sonar_error_message?: string | null;
-  sonar_report?: SonarReport | null;
-  tests_run: number;
-  tests_passed: number;
-  tests_failed: number;
-  test_summary?: string | null;
-  test_insights?: string[];
-  test_llm_model?: string | null;
-  bl_coverage?: number;
-  test_pipeline?: {
-    provider: string;
-    project_kind: string;
-    generated_tests_relative: string;
-    test_strategy?: string | null;
-    existing_tests_detected?: number;
-    existing_test_files?: string[];
-    migrated_test_files?: string[];
-    generated_test_files: string[];
-    test_summary_metrics?: Record<string, unknown> | null;
-    runner: Record<string, unknown>;
-    functional_testing?: {
+export interface FunctionalTesting {
       status?: string;
       application_type?: string;
       recommended_tools?: string[];
@@ -199,13 +151,64 @@ export interface MigrationResult {
         }>;
       };
       message?: string;
-    } | null;
+}
+
+export interface MigrationResult {
+  job_id: string;
+  status: string;
+  source_repo: string;
+  target_repo: string | null;
+  source_java_version: string;
+  target_java_version: string;
+  conversion_types: string[];
+  started_at: string;
+  worker_started_at?: string | null;
+  completed_at: string | null;
+  progress_percent: number;
+  current_step: string;
+  dependencies: DependencyInfo[];
+  files_modified: number;
+  issues_fixed: number;
+  api_endpoints_validated: number;
+  api_endpoints_working: number;
+  sonar_quality_gate: string | null;
+  sonar_bugs: number;
+  sonar_vulnerabilities: number;
+  sonar_code_smells: number;
+  sonar_coverage: number;
+  sonar_duplications?: number;
+  sonar_security_hotspots?: number;
+  sonar_scan_mode?: string | null;
+  sonar_real_scan?: boolean;
+  sonar_analysis_url?: string | null;
+  sonar_error_message?: string | null;
+  sonar_report?: SonarReport | null;
+  tests_run: number;
+  tests_passed: number;
+  tests_failed: number;
+  test_summary?: string | null;
+  test_insights?: string[];
+  test_llm_model?: string | null;
+  bl_coverage?: number;
+  test_pipeline?: {
+    provider: string;
+    project_kind: string;
+    generated_tests_relative: string;
+    test_strategy?: string | null;
+    existing_tests_detected?: number;
+    existing_test_files?: string[];
+    migrated_test_files?: string[];
+    generated_test_files: string[];
+    test_summary_metrics?: Record<string, unknown> | null;
+    runner: Record<string, unknown>;
+    functional_testing?: FunctionalTesting | null;
     manual_test_plan_path?: string | null;
     migration_patch_path?: string | null;
     deepeval_result?: Record<string, unknown> | null;
     garak_result?: Record<string, unknown> | null;
     coverage_result?: Record<string, unknown> | null;
   } | null;
+  functional_pipeline?: FunctionalTesting | null;
   // FOSSA scan results (optional)
   fossa_policy_status?: string | null;
   fossa_total_dependencies?: number;
@@ -466,20 +469,6 @@ export async function healthCheck(): Promise<{ status: string; timestamp: string
     "Failed to reach backend health endpoint",
     {
       baseUrl: APP_BASE_URL,
-    }
-  );
-}
-
-// Clone a repository and run a FOSSA analysis (backend will return simulated results when CLI unavailable)
-export async function analyzeFossaForRepo(repoUrl: string, token: string = ""): Promise<{
-  repo_url: string;
-  fossa: FossaScanResult;
-}> {
-  return requestJson<{ repo_url: string; fossa: FossaScanResult }>(
-    "/fossa/analyze-url",
-    "Failed to run FOSSA analyze",
-    {
-      query: { repo_url: repoUrl, token },
     }
   );
 }

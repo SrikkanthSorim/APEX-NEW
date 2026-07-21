@@ -23,6 +23,18 @@ class GithubRepoResponse:
     data: dict[str, Any] | None
 
 
+@dataclass(frozen=True)
+class GithubContentsResponse:
+    """Result of a ``GET /repos/{owner}/{repo}/contents/{path}`` call.
+
+    ``data`` is the raw parsed JSON: a list for a directory listing, a dict for a
+    single file, or None when the body isn't JSON.
+    """
+
+    status_code: int
+    data: list[Any] | dict[str, Any] | None
+
+
 class GithubClient:
     """Async wrapper around the handful of GitHub endpoints Connect needs."""
 
@@ -77,6 +89,38 @@ class GithubClient:
             data = None
 
         return GithubRepoResponse(status_code=response.status_code, data=data)
+
+    async def get_contents(
+        self,
+        owner: str,
+        repo: str,
+        path: str = "",
+        token: str | None = None,
+    ) -> GithubContentsResponse:
+        """Fetch a repository path via ``GET /repos/{owner}/{repo}/contents/{path}``.
+
+        Returns the raw parsed JSON: a **list** for a directory, a **dict** for a
+        single file (with base64 ``content``). HTTP status codes are returned to
+        the caller for interpretation; transport failures raise
+        :class:`GithubServiceError`.
+        """
+        clean_path = (path or "").strip().lstrip("/")
+        url = f"{self._base_url}/repos/{owner}/{repo}/contents/{clean_path}"
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                response = await client.get(url, headers=self._headers(token))
+        except httpx.HTTPError as exc:  # transport / timeout / DNS
+            raise GithubServiceError() from exc
+
+        data: list[Any] | dict[str, Any] | None = None
+        try:
+            parsed = response.json()
+            if isinstance(parsed, (list, dict)):
+                data = parsed
+        except ValueError:
+            data = None
+
+        return GithubContentsResponse(status_code=response.status_code, data=data)
 
     # ------------------------------------------------------------------ #
     # Sync methods (used by the Start Migration background thread)
