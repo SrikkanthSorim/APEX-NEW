@@ -33,6 +33,26 @@ export interface DetectedFramework {
   type: string;
 }
 
+/**
+ * Spring -> Spring Boot conversion eligibility, computed by the backend from
+ * the actual cloned-and-analyzed repository (never from the URL, repo name,
+ * or mock data). Drives whether the Strategy step's conversion card is
+ * enabled/disabled and what it displays.
+ */
+export interface SpringBootConversionEligibility {
+  repositoryAnalyzed: boolean;
+  javaMigrationEligible: boolean;
+  javaMigrationReason: string;
+  springDetected: boolean;
+  springBootDetected: boolean;
+  springVersion: string | null;
+  springBootVersion: string | null;
+  buildTool: string;
+  springBootConversionEligible: boolean;
+  springBootUpgradeEligible: boolean;
+  eligibilityReason: string;
+}
+
 export interface RepoAnalysis {
   name: string;
   full_name: string;
@@ -82,6 +102,8 @@ export interface RepoAnalysis {
   };
   // backend-provided microservice eligibility assessment
   microservice_eligibility?: MicroserviceEligibilityResult;
+  // backend-provided Spring -> Spring Boot conversion eligibility (Discovery stage)
+  spring_boot_eligibility?: SpringBootConversionEligibility;
 }
 
 export interface MicroserviceScoreBreakdown {

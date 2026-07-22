@@ -112,6 +112,38 @@ export function StrategyStepView({
   const detectedSourceVersion =
     (repoAnalysis?.java_version || repoAnalysis?.java_version_from_build || selectedSourceVersion).toString().trim();
 
+  // Spring -> Spring Boot conversion card: enabled/disabled purely from the
+  // backend's Discovery-stage analysis of the actual cloned repository (never
+  // guessed from the repo name/URL). Until that analysis result is present on
+  // repoAnalysis, the card stays in a disabled "analyzing" state.
+  const springEligibility = repoAnalysis?.spring_boot_eligibility;
+  const springBootPathwayStatus: "loading" | "conversion" | "upgrade" | "disabled" = !repoAnalysis
+    ? "loading"
+    : !springEligibility || !springEligibility.repositoryAnalyzed
+      ? "loading"
+      : springEligibility.springBootConversionEligible
+        ? "conversion"
+        : springEligibility.springBootUpgradeEligible
+          ? "upgrade"
+          : "disabled";
+  const springBootReason =
+    springEligibility?.eligibilityReason ??
+    (repoAnalysis ? "Analyzing repository for Spring Boot eligibility..." : "Connect a repository to check Spring Boot eligibility.");
+  const springBootTitle =
+    springBootPathwayStatus === "upgrade" ? "Spring Boot Version Upgrade" : "Spring -> Spring Boot";
+  const springBootDesc =
+    springBootPathwayStatus === "upgrade"
+      ? "Upgrade the existing Spring Boot version toward your target Java version."
+      : "Convert a traditional Spring Framework project to Spring Boot.";
+  const springBootBadgeLabel =
+    springBootPathwayStatus === "loading"
+      ? "Analyzing..."
+      : springBootPathwayStatus === "disabled"
+        ? "Not Eligible"
+        : springBootPathwayStatus === "upgrade"
+          ? "Upgrade Available"
+          : "Conversion Available";
+
   return (
     <div style={styles.card}>
       <div style={styles.stepHeader}>
@@ -222,7 +254,9 @@ export function StrategyStepView({
                   desc: "Upgrade Java version with Dependencies update",
                   icon: <FaJava />,
                   color: "#2563eb",
-                  status: "active" as const,
+                  disabled: false,
+                  badgeLabel: "Active",
+                  detail: null as React.ReactNode,
                 },
                 {
                   key: "build_conversion",
@@ -230,7 +264,9 @@ export function StrategyStepView({
                   desc: "Convert pom.xml to build.gradle with dependency mapping",
                   icon: <FaCogs />,
                   color: "#8b5cf6",
-                  status: "coming_soon" as const,
+                  disabled: true,
+                  badgeLabel: "Coming Soon",
+                  detail: null as React.ReactNode,
                 },
                 {
                   key: "microservices",
@@ -238,7 +274,9 @@ export function StrategyStepView({
                   desc: "Decompose monolith into microservices architecture",
                   icon: <FaProjectDiagram />,
                   color: "#0ea5e9",
-                  status: "coming_soon" as const,
+                  disabled: true,
+                  badgeLabel: "Coming Soon",
+                  detail: null as React.ReactNode,
                 },
                 {
                   key: "jakarta",
@@ -246,15 +284,31 @@ export function StrategyStepView({
                   desc: "Migrate javax.* packages to jakarta.*",
                   icon: <FaCode />,
                   color: "#f59e0b",
-                  status: "coming_soon" as const,
+                  disabled: true,
+                  badgeLabel: "Coming Soon",
+                  detail: null as React.ReactNode,
                 },
                 {
                   key: "spring_boot",
-                  title: "Spring -> Spring Boot",
-                  desc: "Upgrade Spring Boot 2.x to 3.x with Jakarta EE",
+                  title: springBootTitle,
+                  desc: springBootDesc,
                   icon: <FaLeaf />,
-                  color: "#22c55e",
-                  status: "active" as const,
+                  color: springBootPathwayStatus === "disabled" || springBootPathwayStatus === "loading" ? "#94a3b8" : "#22c55e",
+                  disabled: springBootPathwayStatus === "disabled" || springBootPathwayStatus === "loading",
+                  badgeLabel: springBootBadgeLabel,
+                  detail: (
+                    <span
+                      style={{
+                        fontWeight: 600,
+                        color:
+                          springBootPathwayStatus === "conversion" || springBootPathwayStatus === "upgrade"
+                            ? "#166534"
+                            : "#64748b",
+                      }}
+                    >
+                      {springBootReason}
+                    </span>
+                  ) as React.ReactNode,
                 },
                 {
                   key: "ui_modernization",
@@ -262,11 +316,24 @@ export function StrategyStepView({
                   desc: "Modernize legacy JSP/JSF views to Angular or React SPA",
                   icon: <FaCode />,
                   color: "#06b6d4",
-                  status: "coming_soon" as const,
+                  disabled: true,
+                  badgeLabel: "Coming Soon",
+                  detail: null as React.ReactNode,
                 },
               ].map((pathway) => {
                 const isActivePathway = selectedConversions.includes(pathway.key);
-                const isDisabledPathway = pathway.status === "coming_soon";
+                const isDisabledPathway = pathway.disabled;
+                const isSpringBootPathway = pathway.key === "spring_boot";
+                const pathwayBadgeLabel =
+                  isSpringBootPathway && !isDisabledPathway && isActivePathway
+                    ? "Active"
+                    : pathway.badgeLabel;
+                const pathwayBadgeStyle: React.CSSProperties | undefined =
+                  isSpringBootPathway && !isDisabledPathway
+                    ? isActivePathway
+                      ? { backgroundColor: "#22c55e", color: "#ffffff" }
+                      : { backgroundColor: "#fef3c7", color: "#92400e" }
+                    : undefined;
 
                 return (
                   <WizardOptionCard
@@ -288,9 +355,13 @@ export function StrategyStepView({
                     iconBadge={renderWizardIconBadge(pathway.icon, pathway.color, "sm")}
                     title={pathway.title}
                     description={pathway.desc}
+                    detail={pathway.detail}
                     topRight={
-                      <div className={`wizard-pathway-status${isDisabledPathway ? " is-disabled" : ""}`}>
-                        {isDisabledPathway ? "Coming Soon" : "Active"}
+                      <div
+                        className={`wizard-pathway-status${isDisabledPathway ? " is-disabled" : ""}`}
+                        style={pathwayBadgeStyle}
+                      >
+                        {pathwayBadgeLabel}
                       </div>
                     }
                     containerStyle={{

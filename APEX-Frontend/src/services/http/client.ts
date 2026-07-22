@@ -145,13 +145,20 @@ function isBodyInitLike(body: NonNullable<ApiRequestOptions["body"]>): body is B
 function buildRequestInit(options: Omit<ApiRequestOptions, "baseUrl" | "query">): RequestInit {
   const { body, headers, ...init } = options;
   const requestHeaders = new Headers(headers);
+  // Protected backend endpoints authenticate via the HttpOnly access_token/
+  // refresh_token cookies (see app/api/deps.py). fetch()'s default,
+  // credentials: "same-origin", silently drops those cookies whenever the
+  // frontend and backend are on different origins — true for local dev
+  // (5173 vs 8000) and for many deployments. Every request through this
+  // shared client sends cookies unless a caller explicitly overrides this.
+  const base: RequestInit = { credentials: "include", ...init, headers: requestHeaders };
 
   if (body == null) {
-    return { ...init, headers: requestHeaders };
+    return base;
   }
 
   if (isBodyInitLike(body)) {
-    return { ...init, headers: requestHeaders, body };
+    return { ...base, body };
   }
 
   if (!requestHeaders.has("Content-Type")) {
@@ -159,8 +166,7 @@ function buildRequestInit(options: Omit<ApiRequestOptions, "baseUrl" | "query">)
   }
 
   return {
-    ...init,
-    headers: requestHeaders,
+    ...base,
     body: JSON.stringify(body),
   };
 }

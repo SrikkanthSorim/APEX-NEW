@@ -48,6 +48,27 @@ class DiscoveryFrontend(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class DiscoverySpringBootConversion(BaseModel):
+    """Spring -> Spring Boot conversion eligibility, computed from the real
+    cloned-and-analyzed repository (never from the URL, repo name, or mock
+    data). Drives whether the frontend's conversion card is enabled.
+    """
+
+    repository_analyzed: bool = Field(..., alias="repositoryAnalyzed")
+    java_migration_eligible: bool = Field(..., alias="javaMigrationEligible")
+    java_migration_reason: str = Field(..., alias="javaMigrationReason")
+    spring_detected: bool = Field(..., alias="springDetected")
+    spring_boot_detected: bool = Field(..., alias="springBootDetected")
+    spring_version: Optional[str] = Field(None, alias="springVersion")
+    spring_boot_version: Optional[str] = Field(None, alias="springBootVersion")
+    build_tool: str = Field(..., alias="buildTool")
+    spring_boot_conversion_eligible: bool = Field(..., alias="springBootConversionEligible")
+    spring_boot_upgrade_eligible: bool = Field(..., alias="springBootUpgradeEligible")
+    eligibility_reason: str = Field(..., alias="eligibilityReason")
+
+    model_config = {"populate_by_name": True}
+
+
 class DiscoveryProject(BaseModel):
     build_tool: str = Field(..., alias="buildTool")
     current_java_version: str = Field(..., alias="currentJavaVersion")
@@ -58,6 +79,18 @@ class DiscoveryProject(BaseModel):
     dependencies_count: int = Field(..., alias="dependenciesCount")
     frontend_detected: bool = Field(..., alias="frontendDetected")
     frontend_type: Optional[str] = Field(None, alias="frontendType")
+    spring_framework_version: Optional[str] = Field(None, alias="springFrameworkVersion")
+    spring_entry_class: Optional[str] = Field(None, alias="springEntryClass")
+    java_migration_eligible: bool = Field(..., alias="javaMigrationEligible")
+    java_migration_reason: str = Field(..., alias="javaMigrationReason")
+    spring_detected: bool = Field(..., alias="springDetected")
+    spring_boot_detected: bool = Field(..., alias="springBootDetected")
+    spring_boot_conversion_eligible: bool = Field(..., alias="springBootConversionEligible")
+    spring_boot_upgrade_eligible: bool = Field(..., alias="springBootUpgradeEligible")
+    eligibility_reason: str = Field(..., alias="eligibilityReason")
+    spring_boot_conversion: Optional[DiscoverySpringBootConversion] = Field(
+        None, alias="springBootConversion"
+    )
 
     model_config = {"populate_by_name": True}
 

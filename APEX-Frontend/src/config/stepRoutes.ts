@@ -1,5 +1,5 @@
 export const STEP_ROUTES: Record<number, string> = {
-  1: "/",
+  1: "/connect",
   2: "/discovery",
   3: "/strategy",
   4: "/migration",

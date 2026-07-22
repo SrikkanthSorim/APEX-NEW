@@ -15,6 +15,21 @@
   box-shadow: 0 6px 18px rgba(15, 23, 42, 0.04);
 }
 
+.ui-nav-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 9px 6px;
+  color: #334155;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 600;
+  transition: color 0.2s ease;
+}
+
+.ui-nav-link:hover {
+  color: #2563eb;
+}
+
 .ui-nav-button {
   display: inline-flex;
   align-items: center;
@@ -212,6 +227,12 @@
 
   .app-shell-nav {
     gap: 8px;
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .ui-nav-link {
+    display: none;
   }
 
   .app-shell-footer-content {
@@ -234,20 +255,11 @@
 }
 
 .ui-menu-button {
-  border: none;
   cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
-.ui-menu-button-disabled {
-  cursor: not-allowed;
-}
-
-.ui-menu-button-github {
-  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.ui-menu-button-github:hover {
-  background: #1e293b !important;
-  color: #fff !important;
-  border-color: #1e293b !important;
+.ui-menu-button:hover {
+  background: #f8fafc !important;
+  border-color: #cbd5e1 !important;
 }

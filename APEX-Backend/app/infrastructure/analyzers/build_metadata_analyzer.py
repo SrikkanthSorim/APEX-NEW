@@ -49,6 +49,7 @@ class BuildMetadataAnalyzer:
         spring_boot_version: str | None,
         dependencies: list[Dependency],
         build_gradle_text: str,
+        spring_boot_signal: bool = False,
     ) -> list[str]:
         frameworks: set[str] = set()
         coordinates = {
@@ -57,7 +58,11 @@ class BuildMetadataAnalyzer:
         }
         groups = {dependency.group_id.lower() for dependency in dependencies}
 
-        if spring_boot_version or any(item.startswith("org.springframework.boot:") for item in coordinates):
+        if (
+            spring_boot_version
+            or spring_boot_signal
+            or any(item.startswith("org.springframework.boot:") for item in coordinates)
+        ):
             frameworks.add("spring-boot")
         if "org.springframework" in groups:
             frameworks.add("spring-framework")

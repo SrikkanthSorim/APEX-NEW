@@ -128,7 +128,7 @@ export function useRepositoryConnect({
     readSessionJson<RepoInfo>(WIZARD_SELECTED_REPO_KEY)
   );
   const [githubToken, setGithubToken] = useState("");
-  const [githubUserLogin, setGithubUserLogin] = useState("");
+  const [githubUserLogin] = useState("");
   const [isPrivateRepo, setIsPrivateRepo] = useState(persistedIsPrivateRepo ?? false);
   const [patToken, setPatToken] = useState(persistedPatToken ?? "");
   const [jobId, setJobId] = useState<string>(() => {
@@ -518,25 +518,6 @@ export function useRepositoryConnect({
     return () => {
       cancelled = true;
     };
-  }, []);
-
-  // GitHub identity: token + logged-in user, both persisted to localStorage by the OAuth callback flow.
-  useEffect(() => {
-    const token = localStorage.getItem("github_token");
-    if (token) {
-      setGithubToken(token);
-    }
-    try {
-      const storedGithubUser = localStorage.getItem("github_user");
-      if (storedGithubUser) {
-        const parsedUser = JSON.parse(storedGithubUser) as { login?: string };
-        if (parsedUser?.login) {
-          setGithubUserLogin(parsedUser.login);
-        }
-      }
-    } catch {
-      setGithubUserLogin("");
-    }
   }, []);
 
   return {

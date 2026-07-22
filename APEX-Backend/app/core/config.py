@@ -176,6 +176,79 @@ class Settings(BaseSettings):
     def is_smtp_configured(self) -> bool:
         return bool(self.smtp_host and self.smtp_from_address and self.support_notification_recipient)
 
+    # --- Database --------------------------------------------------------------
+    # PostgreSQL connection string using the psycopg (v3) driver, e.g.:
+    # postgresql+psycopg://user:password@localhost:5432/java_apex_db
+    database_url: str = ""
+
+    # --- Authentication (JWT + cookies) -----------------------------------------
+    # HMAC signing secret for access/refresh JWTs. Must be set in .env — the
+    # empty default is rejected at startup by validate_auth_settings() below.
+    jwt_secret_key: str = ""
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 30
+    refresh_token_expire_days: int = 7
+
+    # Frontend origin this deployment's auth cookies/CORS trust.
+    frontend_url: str = "http://localhost:5173"
+
+    # "development" or "production" — controls the auth cookies' Secure flag.
+    environment: str = "development"
+
+    # --- OAuth (Google / GitHub social login) ---------------------------------
+    # Identity-only login (see app/infrastructure/oauth/). Deliberately separate
+    # from GITHUB_TOKEN/GITHUB_TARGET_TOKEN above, which are unrelated to login
+    # and used only for the Connect stage's repository read/publish access.
+    google_client_id: str = Field(default="", alias="GOOGLE_CLIENT_ID")
+    google_client_secret: str = Field(default="", alias="GOOGLE_CLIENT_SECRET")
+    google_redirect_uri: str = Field(
+        default="http://localhost:8000/api/auth/google/callback", alias="GOOGLE_REDIRECT_URI"
+    )
+    github_client_id: str = Field(default="", alias="GITHUB_CLIENT_ID")
+    github_client_secret: str = Field(default="", alias="GITHUB_CLIENT_SECRET")
+    github_redirect_uri: str = Field(
+        default="http://localhost:8000/api/auth/github/callback", alias="GITHUB_REDIRECT_URI"
+    )
+    # How long a signed OAuth `state` (and, for Google, the PKCE code_verifier
+    # cookie) stays valid — the window the user has to complete the provider's
+    # consent screen before the login attempt must be restarted.
+    oauth_state_expire_seconds: int = 600
+
+    @property
+    def google_oauth_configured(self) -> bool:
+        return bool(self.google_client_id and self.google_client_secret)
+
+    @property
+    def github_oauth_configured(self) -> bool:
+        return bool(self.github_client_id and self.github_client_secret)
+
+    @property
+    def is_production(self) -> bool:
+        return self.environment.strip().lower() == "production"
+
+    def validate_auth_settings(self) -> None:
+        """Fail fast at startup if a required auth setting is missing.
+
+        Called once from ``main.py`` before the app starts serving requests —
+        similar to a Spring Boot ``@PostConstruct`` sanity check. Only ever
+        reports which variable NAMES are missing, never their values, so
+        nothing secret reaches the startup log.
+        """
+        missing = [
+            name
+            for name, value in (
+                ("DATABASE_URL", self.database_url),
+                ("JWT_SECRET_KEY", self.jwt_secret_key),
+            )
+            if not value
+        ]
+        if missing:
+            raise RuntimeError(
+                "Missing required environment variable(s): "
+                f"{', '.join(missing)}. Set them in APEX-Backend/.env "
+                "(see .env.example)."
+            )
+
     # --- CORS ----------------------------------------------------------------
     # Comma-separated list of allowed origins for the frontend dev/prod hosts.
     cors_origins: str = (

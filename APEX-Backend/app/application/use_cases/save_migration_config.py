@@ -133,27 +133,36 @@ class SaveMigrationConfigUseCase:
         requested: list[Any],
         discovery: dict[str, Any],
     ) -> list[str]:
-        """Keep Spring Boot conversion aligned with the analyzed repository.
+        """Keep the Spring Boot conversion type aligned with the analyzed
+        repository. The frontend can send stale checkbox state (e.g. left
+        over from a previously analyzed repository); Discovery's own
+        eligibility computation is the source of truth here, so this method
+        never re-derives eligibility itself.
 
-        The frontend can send stale checkbox state. Discovery is the source of
-        truth: Spring Boot upgrades should be enabled only for detected Spring
-        Boot projects, and disabled for plain Java / non-Boot repositories.
+        The conversion type is kept only when the user explicitly selected it
+        and the repository is eligible for either the Spring -> Spring Boot
+        conversion (legacy Spring, not yet Boot) or the Spring Boot version
+        upgrade (already Boot). It is never auto-added for an eligible repo,
+        and it is dropped entirely when Spring was not detected at all.
         """
         normalized: list[str] = []
+        spring_boot_requested = False
         for item in requested:
             conversion = str(item).strip()
             if not conversion:
                 continue
             key = conversion.lower()
             if key in SPRING_BOOT_CONVERSION_ALIASES:
+                spring_boot_requested = True
                 continue
             if conversion not in normalized:
                 normalized.append(conversion)
 
-        is_spring_boot = bool(discovery.get("springBootVersion")) or (
-            str(discovery.get("projectType") or "").upper() == "SPRING_BOOT"
+        eligibility = discovery.get("springBootConversion") or {}
+        is_eligible = bool(eligibility.get("springBootConversionEligible")) or bool(
+            eligibility.get("springBootUpgradeEligible")
         )
-        if is_spring_boot and SPRING_BOOT_CONVERSION not in normalized:
+        if spring_boot_requested and is_eligible and SPRING_BOOT_CONVERSION not in normalized:
             normalized.append(SPRING_BOOT_CONVERSION)
 
         return normalized
