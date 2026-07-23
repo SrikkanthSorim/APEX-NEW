@@ -349,6 +349,29 @@ class ChatLLMNotConfiguredError(StrategyChatError):
         super().__init__(message)
 
 
+class RagDisabledError(StrategyChatError):
+    """The retrieval stack is switched off for this deployment.
+
+    Raised when ``settings.rag_enabled`` is false — typically on a small cloud
+    instance that cannot host the local embedding model, where the RAG packages
+    are not installed at all. Deliberately a ``StrategyChatError`` so both chat
+    endpoints render it as a normal, user-facing "unavailable" message rather
+    than a 500 / ImportError traceback.
+    """
+
+    status = "CHAT_UNAVAILABLE"
+    http_status = 503
+
+    def __init__(
+        self,
+        message: str = (
+            "The JavaApex Assistant is not available in this deployment. "
+            "Discovery and migration reports are unaffected."
+        ),
+    ) -> None:
+        super().__init__(message)
+
+
 class ChatLLMServiceError(StrategyChatError):
     """Both the primary (Groq) and fallback (Ollama) chat models failed."""
 

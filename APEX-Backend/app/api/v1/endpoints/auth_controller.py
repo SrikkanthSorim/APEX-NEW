@@ -69,11 +69,16 @@ def _set_auth_cookies(response: JSONResponse, access_token: str, refresh_token: 
     `secure=settings.is_production`: cookies require HTTPS in production,
     but not in local development over plain http://localhost (a browser
     will silently drop a `Secure` cookie sent over http://).
+
+    `samesite=settings.cookie_samesite`: "none" in production, where the
+    frontend is served from a different host than this API and every call is
+    therefore cross-site; "lax" locally. See the property for why the two
+    environments cannot share one value.
     """
     common_cookie_options = {
         "httponly": True,
         "secure": settings.is_production,
-        "samesite": "lax",
+        "samesite": settings.cookie_samesite,
         "path": "/",
     }
     response.set_cookie(
@@ -91,11 +96,23 @@ def _set_auth_cookies(response: JSONResponse, access_token: str, refresh_token: 
 
 
 def _clear_auth_cookies(response: JSONResponse) -> None:
-    """Delete both cookies. Must use the SAME path/samesite used when they
-    were set, or the browser treats it as a different cookie and won't
-    actually remove the original one."""
+    """Delete both cookies. Must use the SAME path/samesite/secure used when
+    they were set, or the browser treats it as a different cookie and won't
+    actually remove the original one.
+
+    `secure` is not optional here despite this being a deletion: a browser
+    rejects any `SameSite=None` cookie that is not also `Secure`, so omitting
+    it in production would make the deletion itself be discarded and logout
+    would silently leave the user signed in.
+    """
     for cookie_name in (ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE):
-        response.delete_cookie(cookie_name, path="/", samesite="lax")
+        response.delete_cookie(
+            cookie_name,
+            path="/",
+            samesite=settings.cookie_samesite,
+            secure=settings.is_production,
+            httponly=True,
+        )
 
 
 def _auth_error_response(exc: AuthError) -> JSONResponse:
@@ -239,7 +256,7 @@ async def google_login() -> RedirectResponse:
         max_age=settings.oauth_state_expire_seconds,
         httponly=True,
         secure=settings.is_production,
-        samesite="lax",
+        samesite=settings.cookie_samesite,
         path=OAUTH_PKCE_COOKIE_PATH,
     )
     return response
@@ -283,7 +300,13 @@ async def google_callback(request: Request, db: Session = Depends(get_db)) -> Re
 
     logger.info("User logged in via Google OAuth (user_id=%s).", user.id)
     response = _oauth_success_redirect(access_token, refresh_token)
-    response.delete_cookie(OAUTH_PKCE_COOKIE, path=OAUTH_PKCE_COOKIE_PATH, samesite="lax")
+    response.delete_cookie(
+        OAUTH_PKCE_COOKIE,
+        path=OAUTH_PKCE_COOKIE_PATH,
+        samesite=settings.cookie_samesite,
+        secure=settings.is_production,
+        httponly=True,
+    )
     return response
 
 

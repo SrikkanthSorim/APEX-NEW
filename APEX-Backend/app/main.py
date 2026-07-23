@@ -45,7 +45,14 @@ async def lifespan(_app: FastAPI):
     # Local/dev convenience: create the target database itself if it doesn't
     # exist yet (the PostgreSQL user/role must already exist and have
     # CREATEDB — this does not create roles, only the database).
-    ensure_database_exists()
+    #
+    # Skipped in production: a managed Postgres provider creates the database
+    # for you, and the role it issues owns only that one database — it can
+    # neither connect to the `postgres` maintenance database this needs nor
+    # run CREATE DATABASE. Attempting it there raises RuntimeError and the
+    # service never finishes booting.
+    if not settings.is_production:
+        ensure_database_exists()
     verify_database_connection()
     # Creates any tables that don't exist yet. Never drops or alters an
     # existing table, and never touches existing rows — safe to run on every

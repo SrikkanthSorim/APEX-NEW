@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.core.config import settings
+from app.core.exceptions import RagDisabledError
 from app.infrastructure.rag import embedder, vector_store
 
 # Upper bound on the assembled context so a large report can't blow the prompt.
@@ -32,7 +33,16 @@ class RetrievalResult:
 
 
 def retrieve(question: str, repository_url: str, top_k: int | None = None) -> RetrievalResult:
-    """Return ranked knowledge chunks + a bounded context block for a repo."""
+    """Return ranked knowledge chunks + a bounded context block for a repo.
+
+    Raises :class:`RagDisabledError` when the retrieval stack is switched off.
+    This is the single chokepoint every chat path funnels through, so guarding
+    it here means the embedding model and vector store are never touched — the
+    packages need not even be installed.
+    """
+    if not settings.rag_enabled:
+        raise RagDisabledError()
+
     limit = top_k or settings.rag_top_k
     query_vector = embedder.embed_query(question)
     hits = vector_store.search(query_vector, repository_url, limit)

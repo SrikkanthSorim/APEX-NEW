@@ -8,7 +8,7 @@ only exposes configuration values.
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # APEX-Backend/app/core/config.py -> parents[2] == APEX-Backend/
@@ -73,6 +73,15 @@ class Settings(BaseSettings):
     # Swap to server mode later by pointing the wrapper at a URL instead.
     qdrant_path: Path = BACKEND_ROOT / "storage" / "vector-store"
     qdrant_collection: str = "repo_knowledge"
+    # Master switch for the whole RAG stack (embeddings + vector store). Off by
+    # default because the local embedding model needs ~500MB resident -- more
+    # than a small/free cloud instance has in total -- and `qdrant-client` /
+    # `sentence-transformers` are not installed in the deployed image. When
+    # false the chatbot reports itself unavailable instead of failing at import
+    # time; Discovery and Migration are unaffected (their indexing calls are
+    # already best-effort). Set RAG_ENABLED=true once the instance has the RAM
+    # and both packages are back in requirements.txt.
+    rag_enabled: bool = False
     # Number of knowledge chunks retrieved per question.
     rag_top_k: int = 6
     # Timeout (seconds) for a single chat-LLM request (Groq or Ollama).
@@ -181,6 +190,27 @@ class Settings(BaseSettings):
     # postgresql+psycopg://user:password@localhost:5432/java_apex_db
     database_url: str = ""
 
+    @field_validator("database_url")
+    @classmethod
+    def _normalize_database_url(cls, value: str) -> str:
+        """Force the psycopg (v3) driver onto the connection string.
+
+        Managed Postgres providers hand out `postgres://...` or
+        `postgresql://...`, but SQLAlchemy maps both onto psycopg2 -- which is
+        not installed (requirements.txt pins psycopg v3) -- so `create_engine`
+        fails at import time with a ModuleNotFoundError. Rewriting the scheme
+        here means the URL can be pasted straight from the provider's dashboard
+        without hand-editing it every time the database is recreated.
+        """
+        url = (value or "").strip()
+        for prefix in ("postgresql+psycopg://", "postgresql+psycopg2://"):
+            if url.startswith(prefix):
+                return url
+        for prefix in ("postgresql://", "postgres://"):
+            if url.startswith(prefix):
+                return "postgresql+psycopg://" + url[len(prefix):]
+        return url
+
     # --- Authentication (JWT + cookies) -----------------------------------------
     # HMAC signing secret for access/refresh JWTs. Must be set in .env — the
     # empty default is rejected at startup by validate_auth_settings() below.
@@ -225,6 +255,22 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.environment.strip().lower() == "production"
+
+    @property
+    def cookie_samesite(self) -> str:
+        """SameSite policy for the auth cookies, chosen per environment.
+
+        The deployed frontend and backend live on different hosts, which makes
+        every API call cross-site. `SameSite=Lax` tells the browser to withhold
+        the cookie on exactly those requests, so login would appear to succeed
+        and then every subsequent call would 401. `None` is required there --
+        and browsers only accept `SameSite=None` alongside `Secure`, which
+        `secure=settings.is_production` already supplies over HTTPS.
+
+        Local development stays on `lax`: a `Secure` cookie is silently dropped
+        over plain http://localhost, which would break dev login instead.
+        """
+        return "none" if self.is_production else "lax"
 
     def validate_auth_settings(self) -> None:
         """Fail fast at startup if a required auth setting is missing.

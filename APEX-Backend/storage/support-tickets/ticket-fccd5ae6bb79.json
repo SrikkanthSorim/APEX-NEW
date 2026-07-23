@@ -1,0 +1,11 @@
+{
+  "ticket_id": "ticket-fccd5ae6bb79",
+  "created_at": "2026-07-23T05:30:39.666931+00:00",
+  "status": "received",
+  "name": "srikkanth",
+  "email": "usrikkanth@gmail.com",
+  "subject": "working endpoints",
+  "message": "working endpoints are not showing",
+  "category": "bug",
+  "job_id": "job_f402377c2d7d"
+}

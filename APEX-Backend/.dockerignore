@@ -1,0 +1,23 @@
+# Local job workspace: cloned repos, migration reports, the Gradle distribution
+# cache and the vector store. Baking these into the image would add hundreds of
+# MB and leak analyzed source code into the container.
+storage/
+
+# Secrets never belong in an image -- Render supplies these as env vars.
+.env
+.env.*
+
+# Python build artefacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Not needed at runtime
+.git/
+.github/
+tests/
+run.ps1
+README.md

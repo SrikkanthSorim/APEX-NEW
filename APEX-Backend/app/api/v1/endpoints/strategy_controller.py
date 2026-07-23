@@ -27,7 +27,8 @@ from app.application.use_cases.index_repository import (
     IndexRepositoryUseCase,
     RepositoryNotFoundForIndexingError,
 )
-from app.core.exceptions import RepositoryNotIndexedError, StrategyChatError
+from app.core.config import settings
+from app.core.exceptions import RagDisabledError, RepositoryNotIndexedError, StrategyChatError
 from app.infrastructure.rag import vector_store
 from app.schemas.strategy_schema import (
     IndexRequest,
@@ -128,6 +129,15 @@ async def reindex(payload: IndexRequest) -> JSONResponse:
 
 
 async def _run_index(payload: IndexRequest) -> JSONResponse:
+    # Indexing goes straight to the embedder/vector store without passing
+    # through retriever.retrieve(), so it needs its own guard — otherwise this
+    # is the one path that would surface a raw ImportError as a 500.
+    if not settings.rag_enabled:
+        exc = RagDisabledError()
+        return JSONResponse(
+            status_code=exc.http_status,
+            content={"status": exc.status, "message": exc.message, "detail": exc.message},
+        )
     try:
         if payload.job_id:
             outcome = await run_in_threadpool(_index_use_case.index_by_job_id, payload.job_id)
@@ -163,5 +173,11 @@ async def _run_index(payload: IndexRequest) -> JSONResponse:
 
 @router.get("/repositories", response_model=RepositoriesResponse)
 async def repositories() -> JSONResponse:
+    # Unlike the chat endpoints there is no StrategyChatError path here, so the
+    # disabled case is handled directly: an empty list is the honest answer
+    # (nothing is indexed) and keeps the widget rendering instead of 500ing on
+    # a missing qdrant-client import.
+    if not settings.rag_enabled:
+        return JSONResponse(status_code=200, content={"repositories": []})
     repos = await run_in_threadpool(vector_store.list_repositories)
     return JSONResponse(status_code=200, content={"repositories": repos})

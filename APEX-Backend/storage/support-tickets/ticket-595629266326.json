@@ -1,0 +1,11 @@
+{
+  "ticket_id": "ticket-595629266326",
+  "created_at": "2026-07-23T05:28:58.603584+00:00",
+  "status": "received",
+  "name": "sahana",
+  "email": "sahana.g101112@gmail.com",
+  "subject": "no working endpoits showing",
+  "message": "working endpoints not showing",
+  "category": "bug",
+  "job_id": "job_f402377c2d7d"
+}
