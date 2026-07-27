@@ -31,6 +31,7 @@ class MigrationStep(str, Enum):
     PREPARING = "Preparing workspace"
     MIGRATING = "Executing Migration"
     VALIDATING = "Validating build"
+    TESTING = "Running unit tests"
     QUALITY_GATES = "Running quality gates"
     PUBLISHING = "Publishing to GitHub"
     COMPLETED = "Migration completed"

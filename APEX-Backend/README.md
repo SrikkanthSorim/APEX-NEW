@@ -94,6 +94,96 @@ storage/migration-jobs/<jobId>/
     logs/discovery.log                 # clone log (tokens masked)
 ```
 
+## Unit test analysis / generation / execution / coverage
+
+Populates the Result page's "Unit Test Report" card grid with real data: an
+OpenRewrite LST scan of the repo (never regex/filename-only) detects existing
+tests right after Discovery clones the repo; if `runTests` is enabled in
+Migration Config, Start Migration compiles/runs the existing suite and produces
+JaCoCo coverage. Missing-test generation is intentionally separate and runs only
+when `use_llm_tests` / `useLlmTests` is enabled.
+
+Generation includes every concrete eligible class by default:
+`SERVICE`/`VALIDATOR`/`CONVERTER`/`UTILITY`/`DOMAIN` plus
+`CONTROLLER`/`ENTITY`/`OTHER` classes that have at least one non-accessor
+method (`GENERATION_ELIGIBLE_CLASS_TYPES` in
+`app/domain/models/unit_test_report.py`). Each candidate is bounded by
+`UNIT_TEST_CLASS_TIMEOUT_SECONDS`, the whole batch by
+`UNIT_TEST_GENERATION_TOTAL_TIMEOUT_SECONDS`, and a Groq rate limit (HTTP
+429) falls back to deterministic JUnit contract tests generated from the
+OpenRewrite inventory instead of producing zero files.
+**Maven, single-module projects only in this phase** — Gradle and
+multi-module reactors report an honest "not yet supported" status instead of
+a fabricated number.
+
+Test generation is backed by Groq's Chat Completions API (see
+`app/infrastructure/llm/groq_client.py`), behind the provider-agnostic
+`UnitTestLlmClient` interface (`app/domain/llm/llm_client.py`) so another
+provider could be swapped in later. A Groq API failure (missing key, auth,
+rate limit, timeout, malformed response) is recorded as a structured
+generation failure and never blocks existing-test execution or the rest of
+the migration — see `GenerateUnitTestsUseCase`.
+
+### Timeouts, retries, and rate-limit fallback
+
+- **Per-call**: `GroqClient` uses split connect/read timeouts
+  (`GROQ_CONNECT_TIMEOUT_SECONDS` / `GROQ_READ_TIMEOUT_SECONDS`) and retries a
+  transient failure (timeout, 429, 500, 502, 503, 504) up to
+  `UNIT_TEST_GENERATION_MAX_RETRIES` times internally, with a capped
+  exponential/`Retry-After`-aware backoff between attempts. A non-retryable
+  failure (400/401/402/403/404, invalid key, invalid request) never retries.
+- **Per-class**: `GenerateUnitTestsUseCase` never retries a failure GroqClient
+  already retried internally (that would multiply wait time for no benefit)
+  -- it only retries a *malformed/unusable response* (invalid JSON/schema),
+  bounded by `UNIT_TEST_MAX_REPAIR_ATTEMPTS`, the same budget used for
+  validation/compile repair. Bounded by `UNIT_TEST_CLASS_TIMEOUT_SECONDS`
+  overall; a call already in flight is never cut off before one legitimate
+  attempt's own ceiling, but never past what's left of the total batch
+  budget either.
+- **Per-batch**: bounded by `UNIT_TEST_GENERATION_TOTAL_TIMEOUT_SECONDS`
+  regardless of how many classes remain.
+- **Rate-limit fallback**: when Groq is still rate-limited after GroqClient's
+  own retry, the use case generates deterministic JUnit 5 contract tests from
+  the OpenRewrite class/method inventory. These fallback tests still pass
+  through the normal validation, write, compile, and run acceptance gate before
+  they count as generated files.
+
+### One-time setup: build the OpenRewrite analysis tool
+
+```bash
+mvn -f tools/rewrite-test-inventory/pom.xml package
+```
+
+Requires JDK 17+ on the machine running the backend (a separate JDK from
+whatever `mvn`/`gradle` use for the migration itself is fine — see
+`app/infrastructure/testing/rewrite_inventory_tool.py`, which auto-discovers
+one). Produces `tools/rewrite-test-inventory/target/rewrite-test-inventory.jar`.
+Until this is built, unit-test analysis/generation endpoints return a clear
+`TOOL_UNAVAILABLE` error instead of silently doing nothing.
+
+### Endpoints (`/api/v1/migration/{jobId}/unit-tests/...`)
+
+`analyze` · `generate` · `run` · `rerun` · `status` · `report` ·
+`report/download` (HTML) · `generated-files`. All require the authenticated
+job owner (`verify_job_ownership`), matching every other job-scoped route.
+
+### Relevant environment variables (see `core/config.py` for defaults)
+
+| Variable | Purpose |
+| --- | --- |
+| `UNIT_TEST_EXECUTION_ENABLED` | Master switch for the whole pipeline |
+| `UNIT_TEST_GENERATION_MAX_CLASSES` | Optional cap on classes generated per migration job. Unset by default, so every eligible class gets generation; set an integer only when a deployment needs a hard cap |
+| `UNIT_TEST_MAX_CASES_PER_CLASS` | Cap on generated test methods per class |
+| `UNIT_TEST_MAX_REPAIR_ATTEMPTS` | Bounded LLM repair-loop attempts on an invalid response, failed validation, or a compile failure |
+| `UNIT_TEST_GENERATION_MAX_RETRIES` | Bounded caller-level retry count *inside GroqClient* for a single Groq call on a temporary error (timeout, 429, 500, 502, 503, 504). Default `1`. Never retried again by the use case on top of this. Never retries 400/401/402/403/404, an invalid API key, or an invalid request |
+| `UNIT_TEST_CLASS_TIMEOUT_SECONDS` | Hard wall-clock ceiling (default `180`) on the Groq calls spent generating tests for one class. A call already in flight is never cut off before `GROQ_CONNECT_TIMEOUT_SECONDS + GROQ_READ_TIMEOUT_SECONDS` has elapsed, but never past the remaining total-batch budget either. Exceeded -> that class is marked `GENERATION_TIMEOUT` and generation moves on; never waits indefinitely |
+| `UNIT_TEST_GENERATION_TOTAL_TIMEOUT_SECONDS` | Hard wall-clock ceiling (default `1800`) for the *entire* generation batch across every candidate class. Exceeded -> remaining classes are skipped (`generationStatus=TIME_BUDGET_EXCEEDED`) and the migration continues (existing-test execution, JaCoCo, quality gates, GitHub push are never blocked) |
+| `JACOCO_MAVEN_PLUGIN_VERSION` | Pinned JaCoCo plugin version (CLI-invoked, no pom.xml edits) |
+| `GROQ_API_KEY` | Required for test generation — get one at console.groq.com/keys. Leave empty to disable generation (existing-test analysis/execution still runs) |
+| `GROQ_MODEL` | Chat model used for generation (default `llama-3.3-70b-versatile`) |
+| `GROQ_CONNECT_TIMEOUT_SECONDS` / `GROQ_READ_TIMEOUT_SECONDS` | Separate connect vs. response-read timeouts (default `10` / `60`) applied to the underlying httpx client -- a slow/unreachable host fails fast on connect without cutting a legitimately-streaming response short. Read is 60s because a strict-JSON-schema structured completion from this model measurably takes 45s+ |
+| `GROQ_MAX_COMPLETION_TOKENS` | Max response tokens per Groq call (default `5000` -- trimmed from 8000 since constrained JSON-schema decoding gets slower as the budget grows, and a generated test class rarely needs that many tokens) |
+
 ## Architecture (layered)
 
 ```
@@ -117,6 +207,24 @@ infrastructure/analyzers/project_analyzer.py coordinates the detectors below
 infrastructure/analyzers/*_detector.py    build tool, java version, spring boot,
                                           dependencies, modules, project type, frontend
 shared/command_runner.py, file_utils.py, json_utils.py  shared utilities
+
+# Unit tests
+api/v1/endpoints/unit_test_controller.py  HTTP boundary (thin, threadpool)
+application/pipelines/unit_test_pipeline.py orchestration seam
+application/use_cases/analyze_unit_tests.py   OpenRewrite LST inventory + decision
+application/use_cases/generate_unit_tests.py  Groq generation + validation + repair loop
+application/use_cases/run_unit_tests.py       compile/execute + JaCoCo coverage
+application/services/unit_test_report_service.py shape persisted report -> API contract
+application/services/unit_test_html_report.py    downloadable HTML report
+domain/llm/llm_client.py                         provider-agnostic LLM contract + schemas
+infrastructure/llm/groq_client.py                Groq Chat Completions client (retries/error mapping)
+infrastructure/testing/rewrite_inventory_tool.py invokes tools/rewrite-test-inventory jar
+infrastructure/testing/rewrite_test_validator.py validates LLM output before writing files
+infrastructure/testing/class_selector.py         prioritize/skip class selection
+infrastructure/testing/maven_test_runner.py      mvn test + JaCoCo (CLI-only, no pom edits)
+infrastructure/testing/surefire_report_parser.py real pass/fail/skip counts from XML
+infrastructure/testing/jacoco_report_parser.py   real coverage % from XML
+tools/rewrite-test-inventory/                    standalone OpenRewrite Java CLI (own pom.xml)
 ```
 
 ## Run locally

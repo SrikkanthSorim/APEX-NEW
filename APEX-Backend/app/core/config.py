@@ -5,11 +5,14 @@ sitting at the backend root). Keep this module free of any business logic — it
 only exposes configuration values.
 """
 
+import logging
 from functools import lru_cache
 from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
 
 # APEX-Backend/app/core/config.py -> parents[2] == APEX-Backend/
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -56,6 +59,50 @@ class Settings(BaseSettings):
     # itself as unavailable rather than fabricating a recommendation).
     huggingface_token: str = Field(default="", alias="HF_TOKEN")
     huggingface_request_timeout_seconds: float = 30.0
+
+    # --- Groq LLM (Automatic unit-test generation) ----------------------------
+    # Used only by the unit-test generation pipeline (analyze/generate/run) --
+    # the Java Version Recommendation feature above keeps using Hugging Face.
+    # Leave GROQ_API_KEY empty to disable generation gracefully: the pipeline
+    # then reports LLM_NOT_CONFIGURED instead of fabricating tests.
+    groq_api_key: str = Field(default="", alias="GROQ_API_KEY")
+    groq_model: str = Field(default="llama-3.3-70b-versatile", alias="GROQ_MODEL")
+    # Split connect/read timeouts (httpx.Timeout) instead of one blanket
+    # value -- a slow/unreachable Groq host must fail fast on connect (10s)
+    # without also cutting a legitimately-in-progress generation response
+    # short before its own read budget is up. 60s (not 30s) for read:
+    # observed in practice -- a strict-JSON-schema structured completion
+    # from this model can legitimately take 45s+ to fully generate, and a
+    # tighter read timeout was cutting off real, still-succeeding responses
+    # before they ever finished (reported as GROQ_TIMEOUT even though Groq
+    # itself was working correctly).
+    groq_connect_timeout_seconds: float = Field(default=10.0, alias="GROQ_CONNECT_TIMEOUT_SECONDS")
+    groq_read_timeout_seconds: float = Field(default=60.0, alias="GROQ_READ_TIMEOUT_SECONDS")
+    # Lower than the API's own ceiling: a full generated test class with a
+    # handful of test cases rarely needs 8000 tokens, and strict JSON-schema
+    # (constrained) decoding gets measurably slower as the token budget
+    # grows -- trimming this reduces real generation latency directly.
+    groq_max_completion_tokens: int = Field(default=5000, alias="GROQ_MAX_COMPLETION_TOKENS")
+    # Best-effort startup check that GROQ_MODEL is actually listed by the Groq
+    # models API. Off by default so server boot never depends on a network call.
+    groq_validate_model_on_startup: bool = Field(default=False, alias="GROQ_VALIDATE_MODEL_ON_STARTUP")
+
+    def validate_groq_settings(self) -> None:
+        """Best-effort startup check -- logs a safe warning, never raises.
+
+        Unit test generation is one optional feature among many (mirrors the
+        existing HF_TOKEN-optional behavior for Java version recommendation)
+        -- a missing/blank GROQ_API_KEY must never prevent the backend itself
+        from starting. Never logs the key's value, only whether it is set.
+        """
+        if not self.groq_api_key.strip():
+            logger.warning(
+                "Groq is not configured: GROQ_API_KEY is empty. Automatic unit-test "
+                "generation will report LLM_NOT_CONFIGURED until it is set."
+            )
+            return
+        if not self.groq_model.strip():
+            logger.warning("Groq is not configured: GROQ_MODEL is empty.")
 
     # --- Git / clone ---------------------------------------------------------
     # Timeout (seconds) for a `git clone` during Discovery.
@@ -107,6 +154,69 @@ class Settings(BaseSettings):
     @property
     def build_gradle_args_list(self) -> list[str]:
         return [a for a in self.build_gradle_args.split(",") if a]
+
+    # --- Unit test analysis/generation/execution/coverage --------------------
+    # Master switch: when False, the unit-test pipeline never runs (Discovery
+    # inventory and Start Migration generation/execution are both skipped).
+    unit_test_execution_enabled: bool = True
+    # Timeout (seconds) for the full-suite `mvn test` + JaCoCo run.
+    unit_test_timeout_seconds: float = 900.0
+    # Timeout (seconds) for compiling/running a single generated test class.
+    unit_test_generated_class_timeout_seconds: float = 300.0
+    # Pinned JaCoCo Maven plugin version (CLI-invoked, no pom.xml edits needed
+    # for the common case -- see MavenTestRunner).
+    jacoco_maven_plugin_version: str = "0.8.14"
+    # Bounds from the spec's Step 5 ("configurable maximum"): at most this
+    # many production classes considered for generation per migration job.
+    # `None` means unbounded -- every eligible class gets generation. The
+    # default is intentionally unbounded so Start Migration generates tests
+    # for every eligible production class; set UNIT_TEST_GENERATION_MAX_CLASSES
+    # only when a deployment needs a hard cap for turnaround time.
+    unit_test_generation_max_classes: int | None = Field(default=None, alias="UNIT_TEST_GENERATION_MAX_CLASSES")
+    # ...and at most this many generated test cases per class.
+    unit_test_max_cases_per_class: int = 5
+    # Controlled repair loop (Step 8): max LLM repair attempts on a
+    # compilation failure before the class is recorded as a failure, not
+    # retried forever.
+    unit_test_max_repair_attempts: int = 2
+    # Bounded caller-level retry count for a *single* Groq call when it fails
+    # with a temporary/retryable error (timeout, 429, 500, 502, 503, 504).
+    # Never retries account-level errors (401/403/404/invalid key/invalid
+    # request) -- those fail identically on every attempt.
+    unit_test_generation_max_retries: int = Field(default=1, alias="UNIT_TEST_GENERATION_MAX_RETRIES")
+    # Hard wall-clock ceiling (seconds) on the Groq calls (initial attempt +
+    # controlled repair-loop attempts) spent generating tests for a *single*
+    # class. Once exceeded, that class is marked GENERATION_TIMEOUT and
+    # generation moves on to the next candidate class -- it never waits
+    # indefinitely on one slow class. Distinct from
+    # unit_test_generated_class_timeout_seconds, which bounds the (already
+    # independently subprocess-timeout-bounded) compile/run step.
+    # Sized above GroqClient's own single-attempt ceiling (connect + read +
+    # watchdog slack, see groq_client.call_ceiling_seconds()) so a class has
+    # room for the initial response plus the configured retry/repair headroom.
+    unit_test_class_timeout_seconds: float = Field(default=180.0, alias="UNIT_TEST_CLASS_TIMEOUT_SECONDS")
+    # Hard wall-clock ceiling (seconds) for the *entire* Groq generation batch
+    # (every candidate class combined), independent of and in addition to the
+    # per-class timeout above. Defense in depth: even if several classes each
+    # legitimately use most of their own per-class budget, generation for the
+    # whole job still stops on its own well before this and hands control
+    # back so existing-test execution, JaCoCo, report persistence, and
+    # migration completion/publish are never held hostage by the LLM step.
+    # Any classes not yet attempted when this fires are recorded as skipped
+    # (not failed) and the migration continues normally. The default gives
+    # typical small/medium projects enough room to generate for every eligible
+    # class while still preventing an indefinitely stuck generation stage.
+    unit_test_generation_total_timeout_seconds: float = Field(
+        default=1800.0, alias="UNIT_TEST_GENERATION_TOTAL_TIMEOUT_SECONDS"
+    )
+    # Path to the standalone OpenRewrite-based CLI jar (see
+    # tools/rewrite-test-inventory/) used for LST-based test inventory and
+    # generated-source validation. Built once via
+    # `mvn -f tools/rewrite-test-inventory/pom.xml package` -- not built
+    # automatically by this application.
+    rewrite_test_inventory_jar_path: Path = (
+        BACKEND_ROOT / "tools" / "rewrite-test-inventory" / "target" / "rewrite-test-inventory.jar"
+    )
 
     # --- Quality Gates -------------------------------------------------------
     # SonarQube/SonarCloud token. Required only when the SonarQube quality gate

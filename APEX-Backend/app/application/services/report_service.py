@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.application.services import unit_test_report_service
 from app.shared import migration_log_sanitizer as sanitizer
 
 
@@ -135,18 +136,22 @@ def _analysis(report: dict[str, Any]) -> dict[str, Any]:
     return values
 
 
-def build_summary(report: dict[str, Any]) -> dict[str, Any]:
+def build_summary(report: dict[str, Any], unit_test_report: dict[str, Any] | None = None) -> dict[str, Any]:
     """Shape a `MigrationJobSummary`."""
     core = _core(report)
     log_lines = sanitizer.sanitize_lines(report.get("logLines") or [])
+    unit_test_overlay = unit_test_report_service.build_report_overlay(unit_test_report)
     return {
         **core,
         **_analysis(report),
+        "tests_run": unit_test_overlay.get("tests_run", 0),
+        "tests_passed": unit_test_overlay.get("tests_passed", 0),
+        "tests_failed": unit_test_overlay.get("tests_failed", 0),
         "api_endpoint_count": 0,
         "issue_count": 0,
         "log_entry_count": len(log_lines),
         "file_diff_count": 0,
-        "has_test_pipeline": False,
+        "has_test_pipeline": bool(unit_test_report),
         "has_sonar_report": bool(report.get("sonar_report")),
         "has_fossa_report": bool(report.get("fossa_report")),
         "has_testcase_doc": False,
@@ -154,10 +159,11 @@ def build_summary(report: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def build_result(report: dict[str, Any]) -> dict[str, Any]:
+def build_result(report: dict[str, Any], unit_test_report: dict[str, Any] | None = None) -> dict[str, Any]:
     """Shape a `MigrationResult` (superset of the summary)."""
     core = _core(report)
     log_lines = sanitizer.sanitize_lines(report.get("logLines") or [])
+    unit_test_overlay = unit_test_report_service.build_report_overlay(unit_test_report)
     return {
         **core,
         **_analysis(report),
@@ -168,9 +174,11 @@ def build_result(report: dict[str, Any]) -> dict[str, Any]:
         "test_insights": [],
         "test_summary": None,
         "test_llm_model": None,
+        "bl_coverage": None,
+        "test_pipeline": None,
+        **unit_test_overlay,
         "sonar_report": report.get("sonar_report"),
         "fossa_report": report.get("fossa_report"),
-        "test_pipeline": None,
         # --- full migration report detail ---
         "modified_files": report.get("modifiedFiles") or [],
         "import_changes": report.get("importChanges") or [],

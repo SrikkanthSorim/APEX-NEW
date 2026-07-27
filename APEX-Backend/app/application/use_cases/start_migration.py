@@ -15,6 +15,12 @@ from typing import Any
 
 from app.application.services import progress_service
 from app.application.services.status_service import MigrationReportStore
+from app.application.use_cases.analyze_unit_tests import AnalyzeUnitTestsUseCase
+from app.application.use_cases.generate_unit_tests import (
+    GenerateUnitTestsUseCase,
+    apply_generation_result,
+)
+from app.application.use_cases.run_unit_tests import RunUnitTestsUseCase
 from app.application.use_cases.save_migration_config import SaveMigrationConfigUseCase
 from app.core.config import settings
 from app.core.exceptions import (
@@ -22,8 +28,14 @@ from app.core.exceptions import (
     MigrationExecutionError,
     MigrationJobNotFoundError,
 )
+from app.domain.enums.unit_test_status import (
+    GENERATION_STATUS_DISABLED,
+    GENERATION_STATUS_NOT_STARTED,
+    UnitTestStatus,
+)
 from app.domain.enums.migration_status import MigrationStatus, MigrationStep
 from app.domain.models.build_result import BuildResult
+from app.domain.models.unit_test_report import ProjectInventory
 from app.infrastructure.build.build_validator import BuildValidator
 from app.infrastructure.github.branch_creator import BranchCreator
 from app.infrastructure.github.repo_creator import RepoCreator
@@ -58,6 +70,25 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _flag(*values: Any) -> bool:
+    """Return the first supplied boolean-like value.
+
+    Request/config payloads can arrive as real booleans or strings, depending
+    on whether they came from JSON bodies or query/form-style callers.
+    """
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+        return bool(value)
+    return False
+
+
 class StartMigrationUseCase:
     def __init__(
         self,
@@ -70,6 +101,9 @@ class StartMigrationUseCase:
         quality_gate_runner: QualityGateRunner | None = None,
         change_analyzer: ChangeAnalyzer | None = None,
         gradle_buildscript_repair: GradleBuildscriptRepair | None = None,
+        unit_test_analyzer: AnalyzeUnitTestsUseCase | None = None,
+        unit_test_generator: GenerateUnitTestsUseCase | None = None,
+        unit_test_runner: RunUnitTestsUseCase | None = None,
     ) -> None:
         self._job_repository = job_repository or JobRepository()
         self._runner = runner or AutomatedMigrationRunner()
@@ -80,6 +114,9 @@ class StartMigrationUseCase:
         self._quality_gate_runner = quality_gate_runner or QualityGateRunner()
         self._change_analyzer = change_analyzer or ChangeAnalyzer()
         self._gradle_buildscript_repair = gradle_buildscript_repair or GradleBuildscriptRepair()
+        self._unit_test_analyzer = unit_test_analyzer or AnalyzeUnitTestsUseCase(self._job_repository)
+        self._unit_test_generator = unit_test_generator or GenerateUnitTestsUseCase()
+        self._unit_test_runner = unit_test_runner or RunUnitTestsUseCase(self._job_repository)
 
     # ------------------------------------------------------------------ #
     # Phase 1: validate + write the initial queued report (synchronous)
@@ -126,6 +163,14 @@ class StartMigrationUseCase:
 
         destination = self._resolve_destination(config, connect)
 
+        run_tests = _flag(options.get("runTests")) or _flag(request.get("run_tests"))
+        use_llm_tests = run_tests and (
+            _flag(options.get("useLlmTests"))
+            or _flag(options.get("use_llm_tests"))
+            or _flag(request.get("use_llm_tests"))
+            or _flag(request.get("useLlmTests"))
+        )
+
         store = MigrationReportStore(WorkspacePaths(job_id))
         report = {
             "jobId": job_id,
@@ -138,9 +183,10 @@ class StartMigrationUseCase:
             "buildTool": build_tool,
             "conversionTypes": conversion_types,
             "options": options,
-            "runSonar": bool(options.get("runSonar") or request.get("run_sonar")),
-            "runFossa": bool(options.get("runFossa") or request.get("run_fossa")),
-            "runTests": bool(options.get("runTests") or request.get("run_tests")),
+            "runSonar": _flag(options.get("runSonar")) or _flag(request.get("run_sonar")),
+            "runFossa": _flag(options.get("runFossa")) or _flag(request.get("run_fossa")),
+            "runTests": run_tests,
+            "useLlmTests": use_llm_tests,
             "destination": destination,
             "targetRepo": None,
             "startedAt": _now(),
@@ -236,6 +282,12 @@ class StartMigrationUseCase:
                     store.read() or {}, result, change_analysis, retry_attempts
                 )
             )
+
+            # --- Unit tests: analyze -> generate missing -> run + coverage.
+            #     Opt-in (report["runTests"]); a failure here is recorded on
+            #     the unit-test report's own status and must never fail the
+            #     migration itself. ---
+            self._run_unit_tests(store, job_id, result, build_result, report)
 
             # --- Optional Quality Gates (SonarQube/FOSSA) ---
             self._run_quality_gates(store, job_id, result.project_dir, report)
@@ -527,6 +579,127 @@ class StartMigrationUseCase:
             parts.append(f"Build validation result: {build_status}.")
 
         return " ".join(parts)
+
+    # -- unit tests: analyze / generate missing / run + coverage ------------- #
+
+    def _run_unit_tests(
+        self,
+        store: MigrationReportStore,
+        job_id: str,
+        result: MigrationRunResult,
+        build_result: BuildResult | None,
+        report: dict[str, Any],
+    ) -> None:
+        if not report.get("runTests") or result.project_dir is None:
+            return
+
+        if not settings.unit_test_execution_enabled:
+            store.append_logs([
+                "Unit test generation/execution skipped: disabled via UNIT_TEST_EXECUTION_ENABLED."
+            ])
+            logger.info("Unit test generation/execution skipped for job %s: disabled via UNIT_TEST_EXECUTION_ENABLED.", job_id)
+            return
+
+        build_tool = (report.get("buildTool") or "").upper()
+        if build_tool not in ("MAVEN", "GRADLE"):
+            store.append_logs([
+                "Unit test generation/execution skipped: only single-module Maven or "
+                "Gradle projects are supported in this phase."
+            ])
+            return
+
+        discovery = self._job_repository.read_discovery_report(job_id) or {}
+        if discovery.get("multiModule"):
+            store.append_logs([
+                "Unit test generation/execution skipped: multi-module projects "
+                "are not yet supported."
+            ])
+            return
+
+        if build_result is None or not build_result.success:
+            store.append_logs([
+                "Unit test generation/execution skipped: the migrated project did not build successfully."
+            ])
+            return
+
+        progress_service.set_phase(
+            store,
+            status=MigrationStatus.RUNNING.value,
+            step=MigrationStep.TESTING.value,
+            percent=75,
+        )
+
+        target_java = str(result.effective_target_java_version or report.get("targetJavaVersion") or "")
+        target_major = _parse_major(target_java)
+
+        try:
+            store.append_logs(["===== UNIT TESTS ====="])
+            logger.info("Unit test analysis started | job_id=%s", job_id)
+            analysis = self._unit_test_analyzer.execute(job_id, result.project_dir, "migrated-repo", build_tool)
+            inventory = ProjectInventory.from_dict(analysis.get("inventory") or {})
+
+            if report.get("useLlmTests"):
+                unit_test_report = self._job_repository.read_unit_test_report(job_id) or {"jobId": job_id}
+                unit_test_report.update(
+                    status=UnitTestStatus.TEST_GENERATION_IN_PROGRESS.value,
+                    updatedAt=_now(),
+                    completedAt=None,
+                    generationStatus=GENERATION_STATUS_NOT_STARTED,
+                    llmProvider=unit_test_report.get("llmProvider") or "groq",
+                )
+                self._job_repository.save_unit_test_report(job_id, unit_test_report)
+
+                def _on_class_done(
+                    partial: Any, class_name: str, completed: int, total: int
+                ) -> None:
+                    current = self._job_repository.read_unit_test_report(job_id) or {}
+                    current = apply_generation_result(current, partial)
+                    current["updatedAt"] = _now()
+                    self._job_repository.save_unit_test_report(job_id, current)
+                    store.append_logs([
+                        f"Unit test generation: {class_name} ({completed}/{total})"
+                    ])
+
+                generation = self._unit_test_generator.execute(
+                    job_id, result.project_dir, inventory,
+                    java_version=target_java,
+                    spring_boot_version=discovery.get("springBootVersion"),
+                    build_tool=build_tool,
+                    target_major=target_major,
+                    on_class_done=_on_class_done,
+                )
+                unit_test_report = self._job_repository.read_unit_test_report(job_id) or {}
+                unit_test_report = apply_generation_result(unit_test_report, generation)
+                self._job_repository.save_unit_test_report(job_id, unit_test_report)
+                accepted_files = [f for f in generation.generated_files if f.get("status") != "REJECTED"]
+                logger.info(
+                    "Generated tests validated | job_id=%s | generated_files=%s | generated_cases=%s | generation_status=%s",
+                    job_id, len(accepted_files), generation.generated_test_case_count, generation.generation_status,
+                )
+            else:
+                unit_test_report = self._job_repository.read_unit_test_report(job_id) or {"jobId": job_id}
+                unit_test_report.update(
+                    updatedAt=_now(),
+                    generationStatus=GENERATION_STATUS_DISABLED,
+                    llmProvider=None,
+                    errorSummary=None,
+                )
+                self._job_repository.save_unit_test_report(job_id, unit_test_report)
+                store.append_logs(["AI unit test generation skipped; running existing tests only."])
+                logger.info("AI unit test generation skipped during migration | job_id=%s", job_id)
+
+            final_report = self._unit_test_runner.execute(
+                job_id, result.project_dir, inventory, target_major, build_tool=build_tool
+            )
+            final_summary = final_report.get("summary") or {}
+            store.append_logs([
+                f"Unit tests: {final_summary.get('passedTests', 0)} passed, "
+                f"{final_summary.get('failedTests', 0)} failed, "
+                f"status={final_report.get('status')}."
+            ])
+        except Exception:  # noqa: BLE001 - a unit-test pipeline failure must never fail the migration
+            logger.exception("Unit test generation/execution failed for job %s (non-fatal)", job_id)
+            store.append_logs(["Unit test generation/execution failed unexpectedly; migration is unaffected."])
 
     # -- optional quality gates --------------------------------------------- #
 

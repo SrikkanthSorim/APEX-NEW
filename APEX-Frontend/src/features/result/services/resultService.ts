@@ -399,7 +399,7 @@ export async function downloadTestcaseReport(jobId: string): Promise<Blob> {
 }
 
 export async function downloadUnitTestReport(jobId: string): Promise<Blob> {
-  return requestBlob(`/migration/${jobId}/unit-test-report`, "Failed to download unit test report");
+  return requestBlob(`/v1/migration/${jobId}/unit-tests/report/download`, "Failed to download unit test report");
 }
 
 export async function downloadSonarReportPdf(jobId: string): Promise<Blob> {
@@ -433,7 +433,7 @@ export async function rerunMigrationTests(
     test_summary?: string | null;
     test_insights?: string[];
     test_llm_model?: string | null;
-  }>(`/migration/${jobId}/rerun-tests`, "Failed to re-run tests", {
+  }>(`/v1/migration/${jobId}/unit-tests/rerun`, "Failed to re-run tests", {
     method: "POST",
     query: {
       llm_provider: llmProvider,

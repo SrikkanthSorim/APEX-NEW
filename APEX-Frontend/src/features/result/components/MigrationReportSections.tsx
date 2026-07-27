@@ -1537,7 +1537,7 @@ export function MigrationUnitTestSection({
           </ul>
         </div>
       )}
-      {testsRun === 0 && migrationJob.status === "completed" && (
+      {migrationJob.status === "completed" && (
         <button
           style={{ ...styles.secondaryBtn, marginTop: 10 }}
           disabled={rerunTestsLoading}

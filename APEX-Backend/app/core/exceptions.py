@@ -273,7 +273,15 @@ class LLMNotConfiguredError(JavaVersionRecommendationError):
 
 
 class LLMServiceError(JavaVersionRecommendationError):
-    """The Hugging Face API could not be reached or returned an error."""
+    """The Hugging Face API could not be reached or returned an error.
+
+    ``provider_status_code`` carries the raw HTTP status the provider
+    returned (e.g. 402 Payment Required, 401 Unauthorized), when the failure
+    came from a non-200 response rather than a transport error -- callers
+    that retry (like the unit-test generation repair loop) use it to tell a
+    one-off bad response (worth retrying) apart from an account-level
+    failure that will recur identically on every retry.
+    """
 
     status = "LLM_SERVICE_ERROR"
     http_status = 502
@@ -281,8 +289,15 @@ class LLMServiceError(JavaVersionRecommendationError):
     def __init__(
         self,
         message: str = "The Hugging Face model could not be reached. Please try again.",
+        provider_status_code: int | None = None,
     ) -> None:
         super().__init__(message)
+        self.provider_status_code = provider_status_code
+
+    @property
+    def is_account_level_failure(self) -> bool:
+        """True for auth/billing failures (401/402/403) that won't resolve on retry."""
+        return self.provider_status_code in (401, 402, 403)
 
 
 class LLMResponseInvalidError(JavaVersionRecommendationError):
@@ -376,6 +391,97 @@ class RepositoryFileNotTextError(RepositoryBrowseError):
     def __init__(
         self,
         message: str = "This file can't be previewed as text.",
+    ) -> None:
+        super().__init__(message)
+
+
+# --------------------------------------------------------------------------- #
+# Unit test analysis / generation / execution / coverage
+# --------------------------------------------------------------------------- #
+
+
+class UnitTestError(Exception):
+    """Base class for the automatic unit-test pipeline's failures.
+
+    Carries a stable ``status`` and a clean ``message`` the API layer maps
+    onto ``{ jobId, status, message }``, mirroring the other stage exception
+    groups. A unit-test failure is reported on the unit-test report's own
+    status -- it must never be allowed to fail the overall migration.
+    """
+
+    status: str = "UNIT_TEST_FAILED"
+    http_status: int = 500
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.message = message
+
+
+class UnitTestWorkspaceNotFoundError(UnitTestError):
+    """No cloned/migrated repo exists yet for this job."""
+
+    status = "WORKSPACE_NOT_FOUND"
+    http_status = 404
+
+    def __init__(
+        self,
+        message: str = "Repository workspace not found. Please run Discovery (and Start Migration) first.",
+    ) -> None:
+        super().__init__(message)
+
+
+class UnitTestToolUnavailableError(UnitTestError):
+    """The OpenRewrite inventory jar hasn't been built, or no JDK is available."""
+
+    status = "TOOL_UNAVAILABLE"
+    http_status = 503
+
+    def __init__(
+        self,
+        message: str = (
+            "The OpenRewrite test-inventory tool is not available. Build it with "
+            "`mvn -f tools/rewrite-test-inventory/pom.xml package`."
+        ),
+    ) -> None:
+        super().__init__(message)
+
+
+class UnitTestUnsupportedProjectError(UnitTestError):
+    """Multi-module projects, or build tools other than Maven/Gradle, are not
+    yet supported for generation/execution."""
+
+    status = "UNSUPPORTED_PROJECT"
+    http_status = 422
+
+    def __init__(
+        self,
+        message: str = (
+            "Automatic unit test generation/execution currently supports single-module "
+            "Maven or Gradle projects only."
+        ),
+    ) -> None:
+        super().__init__(message)
+
+
+class UnitTestGenerationFailedError(UnitTestError):
+    """The LLM test-generation step could not produce a usable result."""
+
+    status = "GENERATION_FAILED"
+    http_status = 502
+
+    def __init__(self, message: str = "Unit test generation failed.") -> None:
+        super().__init__(message)
+
+
+class UnitTestReportNotFoundError(UnitTestError):
+    """No unit-test-report.json exists yet for this job."""
+
+    status = "REPORT_NOT_FOUND"
+    http_status = 404
+
+    def __init__(
+        self,
+        message: str = "No unit test report is available yet for this job.",
     ) -> None:
         super().__init__(message)
 

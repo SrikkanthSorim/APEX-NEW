@@ -54,3 +54,46 @@ def send_support_notification(ticket: dict[str, Any]) -> bool:
             ticket.get("ticket_id"),
         )
         return False
+
+
+def send_ticket_confirmation(ticket: dict[str, Any]) -> bool:
+    """Attempt to email the ticket submitter a receipt confirmation. Never raises."""
+    if not settings.is_smtp_configured:
+        logger.info(
+            "SMTP not configured; skipping submitter confirmation email for ticket %s.",
+            ticket.get("ticket_id"),
+        )
+        return False
+
+    recipient = ticket.get("email", "")
+    if not recipient:
+        return False
+
+    try:
+        message = EmailMessage()
+        message["Subject"] = f"We received your request ({ticket.get('ticket_id')})"
+        message["From"] = settings.smtp_from_address
+        message["To"] = recipient
+        message.set_content(
+            f"Hi {ticket.get('name') or 'there'},\n\n"
+            "Thanks for reaching out to Java APEX support. We've received your request "
+            f"and will follow up by email if needed.\n\n"
+            f"Ticket ID: {ticket.get('ticket_id')}\n"
+            f"Subject: {ticket.get('subject')}\n\n"
+            "Your message:\n"
+            f"{ticket.get('message')}\n"
+        )
+
+        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10) as server:
+            if settings.smtp_use_tls:
+                server.starttls()
+            if settings.smtp_username:
+                server.login(settings.smtp_username, settings.smtp_password)
+            server.send_message(message)
+        return True
+    except Exception:
+        logger.exception(
+            "Best-effort submitter confirmation email failed for ticket %s; ticket already persisted.",
+            ticket.get("ticket_id"),
+        )
+        return False

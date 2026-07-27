@@ -204,42 +204,16 @@ const TERMINAL_MIGRATION_STATUSES = new Set(["completed", "failed", "cancelled"]
 const isTerminalMigrationStatus = (status: string | null | undefined): boolean =>
   Boolean(status && TERMINAL_MIGRATION_STATUSES.has(status.toLowerCase()));
 
-const getMigrationPollingDelayMs = (status: string | null | undefined, startedAt?: string | null): number => {
-  const normalizedStatus = (status || "").toLowerCase();
-  
-  const startedAtMs = startedAt ? Date.parse(startedAt) : Number.NaN;
-  const elapsedMs = Number.isNaN(startedAtMs) ? 0 : Math.max(0, Date.now() - startedAtMs);
-  
-  // Progressive backoff based on elapsed time and status
-  let baseDelayMs: number;
-  
-  if (normalizedStatus === "queued" || normalizedStatus === "pending") {
-    // Queue: start at 8s, increase to 15s after 60s
-    baseDelayMs = elapsedMs >= 60_000 ? 15000 : 8000;
-  } else if (normalizedStatus === "stale") {
-    baseDelayMs = 5000;
-  } else if (normalizedStatus === "cancel_requested") {
-    baseDelayMs = 3000;
-  } else {
-    // In-progress or other states: progressive backoff
-    // 0-2 min: 5s, 2-5 min: 8s, 5-10 min: 12s, 10+ min: 18s
-    if (elapsedMs < 120_000) {
-      baseDelayMs = 5000;
-    } else if (elapsedMs < 300_000) {
-      baseDelayMs = 8000;
-    } else if (elapsedMs < 600_000) {
-      baseDelayMs = 12000;
-    } else {
-      baseDelayMs = 18000;
-    }
-  }
+const MIGRATION_POLL_INTERVAL_MS = 5000;
 
-  // If browser tab is hidden, use 25+ seconds to reduce background load
+const getMigrationPollingDelayMs = (_status?: string | null, _startedAt?: string | null): number => {
+  // Flat 5s cadence while the migration is in progress (stopped entirely
+  // once a terminal status is reached -- see the polling effect below).
+  // If the browser tab is hidden, back off to reduce background load.
   if (typeof document !== "undefined" && document.visibilityState === "hidden") {
-    return Math.max(baseDelayMs, 25000);
+    return Math.max(MIGRATION_POLL_INTERVAL_MS, 25000);
   }
-
-  return baseDelayMs;
+  return MIGRATION_POLL_INTERVAL_MS;
 };
 
 type DependencyCategory =
@@ -2650,7 +2624,7 @@ export function useWizardController() {
         targetJavaVersion: effectiveTargetVersion,
         buildTool: repoAnalysis?.build_tool || null,
         conversionTypes: selectedConversions,
-        options: { runTests, runSonar, runFossa, fixBusinessLogic },
+        options: { runTests, useLlmTests: runTests && useLLMTests, runSonar, runFossa, fixBusinessLogic },
       };
 
       // Fire-and-forget: saving config must not block navigation.

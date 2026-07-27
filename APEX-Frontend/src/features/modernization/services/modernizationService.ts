@@ -159,6 +159,7 @@ export interface MigrationConfigPayload {
   conversionTypes?: string[];
   options?: {
     runTests: boolean;
+    useLlmTests?: boolean;
     runSonar: boolean;
     runFossa: boolean;
     fixBusinessLogic: boolean;

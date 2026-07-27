@@ -20,3 +20,7 @@ storage/.gradle-cache/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+
+# Built OpenRewrite test-inventory CLI jar (built via
+# `mvn -f tools/rewrite-test-inventory/pom.xml package`, not committed)
+tools/rewrite-test-inventory/target/

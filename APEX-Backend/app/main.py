@@ -42,6 +42,7 @@ async def lifespan(_app: FastAPI):
     before any request is served.
     """
     settings.validate_auth_settings()
+    settings.validate_groq_settings()
     # Local/dev convenience: create the target database itself if it doesn't
     # exist yet (the PostgreSQL user/role must already exist and have
     # CREATEDB — this does not create roles, only the database).

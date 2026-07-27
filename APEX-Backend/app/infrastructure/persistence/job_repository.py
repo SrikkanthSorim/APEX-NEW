@@ -77,6 +77,22 @@ class JobRepository:
             return None
         return json.loads(report_path.read_text(encoding="utf-8"))
 
+    def save_unit_test_report(self, job_id: str, report: dict[str, Any]) -> Path:
+        """Write ``unit-test-report.json`` for the given job and return its path."""
+        reports_dir = self._reports_dir(job_id)
+        reports_dir.mkdir(parents=True, exist_ok=True)
+
+        report_path = reports_dir / "unit-test-report.json"
+        report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        return report_path
+
+    def read_unit_test_report(self, job_id: str) -> dict[str, Any] | None:
+        """Read back a previously saved unit test report, if it exists."""
+        report_path = self._reports_dir(job_id) / "unit-test-report.json"
+        if not report_path.exists():
+            return None
+        return json.loads(report_path.read_text(encoding="utf-8"))
+
     def job_exists(self, job_id: str) -> bool:
         """True if the job directory (created during Connect) exists on disk."""
         return self._job_dir(job_id).is_dir()

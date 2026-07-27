@@ -3,7 +3,7 @@ import type { PersistedWizardFormState } from "@/shared/utils/migrationWizardSto
 
 export function useModernizationState(persistedFormState: PersistedWizardFormState | null) {
   const [runTests, setRunTests] = useState(persistedFormState?.runTests ?? true);
-  const [useLLMTests, setUseLLMTests] = useState(true);
+  const [useLLMTests, setUseLLMTests] = useState(false);
   const [selectedLLMProvider, setSelectedLLMProvider] = useState("huggingface");
   const [runSonar, setRunSonar] = useState(persistedFormState?.runSonar ?? true);
   const [runFossa, setRunFossa] = useState(persistedFormState?.runFossa ?? false);

@@ -33,6 +33,7 @@ class MigrationConfigOptions(BaseModel):
     """Migration toggles selected on the config page."""
 
     run_tests: bool = Field(False, alias="runTests")
+    use_llm_tests: bool = Field(False, alias="useLlmTests")
     run_sonar: bool = Field(False, alias="runSonar")
     run_fossa: bool = Field(False, alias="runFossa")
     fix_business_logic: bool = Field(False, alias="fixBusinessLogic")

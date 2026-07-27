@@ -1,0 +1,11 @@
+{
+  "ticket_id": "ticket-ceb5a5f07187",
+  "created_at": "2026-07-23T06:26:59.040089+00:00",
+  "status": "received",
+  "name": "Pavithra",
+  "email": "dzabhishek07@gmail.com",
+  "subject": "Reg - Test Mail",
+  "message": "The sonar issues are too high , we need to fix it.",
+  "category": "bug",
+  "job_id": "job_48ad92d24758"
+}

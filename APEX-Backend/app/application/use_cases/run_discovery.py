@@ -18,6 +18,9 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
+from pathlib import Path
+
+from app.application.use_cases.analyze_unit_tests import AnalyzeUnitTestsUseCase
 from app.core.config import settings
 from app.core.exceptions import ConnectReportNotFoundError, UnsupportedProjectError
 from app.infrastructure.analyzers.project_analyzer import ProjectAnalysis, ProjectAnalyzer
@@ -50,10 +53,12 @@ class RunDiscoveryUseCase:
         job_repository: JobRepository | None = None,
         cloner: RepositoryCloner | None = None,
         analyzer: ProjectAnalyzer | None = None,
+        unit_test_analyzer: AnalyzeUnitTestsUseCase | None = None,
     ) -> None:
         self._job_repository = job_repository or JobRepository()
         self._cloner = cloner or RepositoryCloner()
         self._analyzer = analyzer or ProjectAnalyzer()
+        self._unit_test_analyzer = unit_test_analyzer or AnalyzeUnitTestsUseCase(self._job_repository)
 
     def execute(self, job_id: str, request_token: str | None = None) -> DiscoveryOutcome:
         # 1. Connect report must exist.
@@ -131,6 +136,12 @@ class RunDiscoveryUseCase:
             job_id, repo_url, owner, repo_name, analysis, eligibility, created_at
         )
         self._job_repository.save_discovery_report(job_id, report)
+
+        # 5. First unit-test inventory pass, immediately after cloning (Step 1
+        # of the unit-test pipeline). Read-only against original-repo, and
+        # deliberately best-effort: any failure here must never break
+        # Discovery itself.
+        self._analyze_unit_tests_best_effort(job_id, paths.original_repo_dir, analysis.build_tool)
 
         # 5. Build the clean summary response.
         response = self._build_response(
@@ -247,3 +258,12 @@ class RunDiscoveryUseCase:
             },
             "nextStep": NEXT_STEP,
         }
+
+    def _analyze_unit_tests_best_effort(self, job_id: str, project_dir: Path, build_tool: str) -> None:
+        if not settings.unit_test_execution_enabled:
+            logger.info("Unit test inventory scan skipped for job %s: disabled via UNIT_TEST_EXECUTION_ENABLED.", job_id)
+            return
+        try:
+            self._unit_test_analyzer.execute(job_id, project_dir, "original-repo", build_tool)
+        except Exception:  # noqa: BLE001 - inventory is best-effort, must never break Discovery
+            logger.exception("Unit test inventory scan failed for job %s (non-fatal)", job_id)

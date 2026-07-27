@@ -65,6 +65,14 @@ class WorkspacePaths:
         return self.reports_dir / "migration-report.json"
 
     @property
+    def unit_test_report_path(self) -> Path:
+        return self.reports_dir / "unit-test-report.json"
+
+    @property
+    def unit_test_html_report_path(self) -> Path:
+        return self.reports_dir / "unit-test-report.html"
+
+    @property
     def discovery_log_path(self) -> Path:
         return self.logs_dir / "discovery.log"
 

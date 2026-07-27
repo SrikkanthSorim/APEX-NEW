@@ -58,7 +58,10 @@ class HuggingFaceClient:
             raise LLMServiceError() from exc
 
         if response.status_code != 200:
-            raise LLMServiceError(f"Hugging Face API returned HTTP {response.status_code}.")
+            raise LLMServiceError(
+                f"Hugging Face API returned HTTP {response.status_code}.",
+                provider_status_code=response.status_code,
+            )
 
         try:
             body = response.json()
